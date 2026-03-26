@@ -536,10 +536,11 @@
       <div class="card-info">
         <div class="card-category">Personaje</div>
         <div class="card-title">Arma Enana</div>
-        <div class="card-student">Estudiante: Carlos Eduardo Almeyda</div>
+        <div class="card-student">Estudiante: Carlos E Almeyda</div>
         <div class="card-tags">
           <span class="tag">PBR</span>
           <span class="tag">GLB</span>
+          <span class="tag">Rigged</span>
         </div>
       </div>
     </div>
@@ -731,17 +732,17 @@
   <script type="module">
     import * as THREE from 'three';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-    import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
     // ── MODELS DATA ──────────────────────────────────────────────
     const models = [
       {
         src: "models/dwarf_sword.glb",
         title: "Arma Enana", category: "Personaje",
-        student: "Carlos Eduardo Almeyda",
+        student: "Carlos E Almeyda",
         desc: "Modelo de Arma con materiales PBR completos. Incluye mapa de rugosidad, metalicidad y oclusión ambiental. Rigging completo para animación.",
-        tags: ["PBR", "GLB", "Normal Map"]
+        tags: ["PBR", "GLB","Normal Map"]
       },
       {
         src: "https://modelviewer.dev/shared-assets/models/Horse.glb",
@@ -765,14 +766,14 @@
         tags: ["PBR", "Metalness", "Roughness", "IBL"]
       },
       {
-        src: "https://modelviewer.dev/shared-assets/models/ShopifyModels/Chair.glb",
+        src: "https://modelviewer.dev/shared-assets/models/NeilArmstrong.glb",
         title: "Silla Diseño", category: "Objeto",
         student: "Estudiante: Valentina Cruz",
         desc: "Modelo de producto industrial con materiales mixtos. Madera y metal con mapas de textura completos. Apto para visualización de producto tipo ecommerce.",
         tags: ["Hard Surface", "GLB", "Materiales", "Producto"]
       },
       {
-        src: "https://modelviewer.dev/shared-assets/models/ShopifyModels/Sneaker.glb",
+        src: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
         title: "Zapatilla", category: "Objeto",
         student: "Estudiante: Sebastián López",
         desc: "Modelo de calzado con alto detalle de superficie y mapas UV precisos. Múltiples materiales diferenciados por zonas con texturas de alta resolución.",
@@ -816,6 +817,11 @@
     const grid = new THREE.GridHelper(10, 20, 0x1e2535, 0x1e2535);
     grid.position.y = -0.01;
     scene.add(grid);
+
+    // DRACO loader for compressed GLBs
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/');
+    loader.setDRACOLoader(dracoLoader);
 
     // State
     let currentModel   = null;
