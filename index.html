@@ -535,8 +535,8 @@
       </div>
       <div class="card-info">
         <div class="card-category">Personaje</div>
-        <div class="card-title">Espada Enana</div>
-        <div class="card-student">Carlos Eduardo Almeyda</div>
+        <div class="card-title">Astronauta</div>
+        <div class="card-student">Estudiante: Ana García</div>
         <div class="card-tags">
           <span class="tag">PBR</span>
           <span class="tag">GLB</span>
@@ -663,19 +663,25 @@
     <p>Three.js · Model Viewer · WebGL</p>
   </footer>
 
+  <!-- THREE.JS -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
   <!-- MODAL -->
   <div class="modal-overlay" id="modalOverlay" onclick="handleOverlayClick(event)">
     <div class="modal" id="modal">
       <div class="modal-viewer-wrap">
         <button class="modal-close" onclick="closeModal()">✕</button>
-        <model-viewer id="modalViewer"
-          camera-controls
-          auto-rotate
-          shadow-intensity="1.2"
-          environment-image="neutral"
-          exposure="1"
-          style="width:100%;height:100%;background:transparent;">
-        </model-viewer>
+        <canvas id="threeCanvas" style="width:100%;height:100%;display:block;"></canvas>
+        <div id="loadingIndicator" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--surface2);">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.15em;color:var(--accent);">CARGANDO MODELO...</span>
+        </div>
       </div>
       <div class="modal-panel">
         <div class="modal-panel-header">
@@ -723,151 +729,285 @@
     </div>
   </div>
 
-  <script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+
+    // ── MODELS DATA ──────────────────────────────────────────────
     const models = [
       {
         src: "models/dwarf_sword.glb",
-        title: "Espada Enana",
-        category: "Personaje",
-        student: "Carlos Eduardo Almeyda",
-        desc: "Modelo de personaje arma con materiales PBR completos. Incluye mapa de rugosidad, metalicidad y oclusión ambiental. Rigging completo para animación.",
+        title: "Espada Enana", category: "Personaje",
+        student: "Estudiante: Ana García",
+        desc: "Modelo de Arma con materiales PBR completos. Incluye mapa de rugosidad, metalicidad y oclusión ambiental. Rigging completo para animación.",
         tags: ["PBR", "GLB", "Rigged", "Normal Map"]
       },
       {
         src: "https://modelviewer.dev/shared-assets/models/Horse.glb",
-        title: "Caballo",
-        category: "Criatura",
+        title: "Caballo", category: "Criatura",
         student: "Estudiante: Carlos Ruiz",
         desc: "Modelo orgánico de criatura con animación de ciclo de movimiento. Topología optimizada para deformación correcta en animación.",
         tags: ["Animado", "GLB", "Texturas", "Organic"]
       },
       {
         src: "https://modelviewer.dev/shared-assets/models/RobotExpressive.glb",
-        title: "Robot Expresivo",
-        category: "Personaje",
+        title: "Robot Expresivo", category: "Personaje",
         student: "Estudiante: Laura Méndez",
         desc: "Robot estilizado con materiales metálicos PBR y animaciones de expresión facial. Hard surface modeling con detalles de superficie.",
         tags: ["PBR", "Animado", "Rigged", "Hard Surface"]
       },
       {
         src: "https://modelviewer.dev/shared-assets/models/reflective-sphere.glb",
-        title: "Esfera PBR",
-        category: "Objeto",
+        title: "Esfera PBR", category: "Objeto",
         student: "Estudiante: Diego Torres",
         desc: "Ejercicio de materiales PBR avanzados. Demuestra el manejo de metalicidad, rugosidad y reflectividad en un objeto simple para enfocarse en la calidad del material.",
         tags: ["PBR", "Metalness", "Roughness", "IBL"]
       },
       {
         src: "https://modelviewer.dev/shared-assets/models/ShopifyModels/Chair.glb",
-        title: "Silla Diseño",
-        category: "Objeto",
+        title: "Silla Diseño", category: "Objeto",
         student: "Estudiante: Valentina Cruz",
         desc: "Modelo de producto industrial con materiales mixtos. Madera y metal con mapas de textura completos. Apto para visualización de producto tipo ecommerce.",
         tags: ["Hard Surface", "GLB", "Materiales", "Producto"]
       },
       {
-        src: "https://modelviewer.dev/shared-assets/models/ShopiyModels/Sneaker.glb",
-        title: "Zapatilla",
-        category: "Objeto",
+        src: "https://modelviewer.dev/shared-assets/models/ShopifyModels/Sneaker.glb",
+        title: "Zapatilla", category: "Objeto",
         student: "Estudiante: Sebastián López",
         desc: "Modelo de calzado con alto detalle de superficie y mapas UV precisos. Múltiples materiales diferenciados por zonas con texturas de alta resolución.",
         tags: ["PBR", "Detalle", "UV Map", "Producto"]
       }
     ];
 
-    let wireframeActive = false;
+    // ── THREE.JS SETUP ────────────────────────────────────────────
+    const canvas    = document.getElementById('threeCanvas');
+    const renderer  = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    const scene   = new THREE.Scene();
+    scene.background = new THREE.Color(0x141820);
+
+    const camera  = new THREE.PerspectiveCamera(45, 1, 0.01, 1000);
+    camera.position.set(0, 1, 3);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 0.5;
+    controls.maxDistance = 20;
+
+    // Lights
+    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    dirLight.position.set(5, 8, 5);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+    const fillLight = new THREE.DirectionalLight(0x4488ff, 0.4);
+    fillLight.position.set(-5, 2, -3);
+    scene.add(fillLight);
+
+    // Grid floor
+    const grid = new THREE.GridHelper(10, 20, 0x1e2535, 0x1e2535);
+    grid.position.y = -0.01;
+    scene.add(grid);
+
+    // State
+    let currentModel   = null;
+    let wireframeGroup = null;
+    let wireframeActive  = false;
     let autoRotateActive = true;
+    let animFrameId    = null;
+    let mixer          = null;
+    const clock        = new THREE.Clock();
 
-    function openModal(index) {
-      const m = models[index];
-      const viewer = document.getElementById('modalViewer');
-      viewer.setAttribute('src', m.src);
-      document.getElementById('modalCategory').textContent = m.category;
-      document.getElementById('modalTitle').textContent = m.title;
-      document.getElementById('modalStudent').textContent = m.student;
-      document.getElementById('modalDesc').textContent = m.desc;
+    // Resize handler
+    function resizeRenderer() {
+      const wrap = canvas.parentElement;
+      const w = wrap.clientWidth;
+      const h = wrap.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
 
-      const tagsEl = document.getElementById('modalTags');
-      tagsEl.innerHTML = m.tags.map(t => `<span class="tag">${t}</span>`).join('');
+    // Animation loop
+    function animate() {
+      animFrameId = requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      if (mixer) mixer.update(delta);
+      if (autoRotateActive && currentModel) currentModel.rotation.y += 0.004;
+      controls.update();
+      renderer.render(scene, camera);
+    }
 
+    // Load GLB into scene
+    const loader = new GLTFLoader();
+    function loadModel(src) {
+      document.getElementById('loadingIndicator').style.display = 'flex';
+
+      // Clean previous
+      if (currentModel) { scene.remove(currentModel); currentModel = null; }
+      if (wireframeGroup) { scene.remove(wireframeGroup); wireframeGroup = null; }
+      if (mixer) { mixer.stopAllAction(); mixer = null; }
       wireframeActive = false;
-      autoRotateActive = true;
       document.getElementById('btnWireframe').classList.remove('active');
+
+      loader.load(src, (gltf) => {
+        const model = gltf.scene;
+
+        // Center and scale
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        const size   = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const scale  = 2 / maxDim;
+        model.scale.setScalar(scale);
+        model.position.sub(center.multiplyScalar(scale));
+        model.position.y += 0.05;
+
+        // Shadows
+        model.traverse(n => {
+          if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; }
+        });
+
+        scene.add(model);
+        currentModel = model;
+
+        // Animations
+        if (gltf.animations && gltf.animations.length > 0) {
+          mixer = new THREE.AnimationMixer(model);
+          mixer.clipAction(gltf.animations[0]).play();
+        }
+
+        // Camera reset
+        const camDist = (maxDim * scale) * 2.2;
+        camera.position.set(0, (size.y * scale) * 0.5, camDist);
+        camera.lookAt(0, 0, 0);
+        controls.target.set(0, 0, 0);
+        controls.update();
+
+        document.getElementById('loadingIndicator').style.display = 'none';
+        resizeRenderer();
+      }, undefined, (err) => {
+        console.error('Error loading model:', err);
+        document.getElementById('loadingIndicator').innerHTML =
+          '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#ff4d00;letter-spacing:0.1em;">ERROR AL CARGAR</span>';
+      });
+    }
+
+    // ── WIREFRAME REAL ────────────────────────────────────────────
+    window.toggleWireframe = function() {
+      if (!currentModel) return;
+      wireframeActive = !wireframeActive;
+      const btn = document.getElementById('btnWireframe');
+
+      if (wireframeActive) {
+        // Ocultar materiales originales
+        currentModel.traverse(n => {
+          if (n.isMesh) n.material.visible = false;
+        });
+
+        // Crear grupo de wireframes
+        wireframeGroup = new THREE.Group();
+        currentModel.traverse(n => {
+          if (n.isMesh) {
+            const wfGeo = new THREE.WireframeGeometry(n.geometry);
+            const wfMat = new THREE.LineBasicMaterial({ color: 0x00e5ff, linewidth: 1 });
+            const wf    = new THREE.LineSegments(wfGeo, wfMat);
+            wf.position.copy(n.getWorldPosition(new THREE.Vector3()));
+            wf.rotation.copy(n.getWorldQuaternion(new THREE.Quaternion()));
+            wf.scale.copy(n.getWorldScale(new THREE.Vector3()));
+            wireframeGroup.add(wf);
+          }
+        });
+        // Clonar la transformación del modelo
+        wireframeGroup.position.copy(currentModel.position);
+        wireframeGroup.rotation.copy(currentModel.rotation);
+        wireframeGroup.scale.copy(currentModel.scale);
+        scene.add(wireframeGroup);
+        scene.background = new THREE.Color(0x080a0e);
+        btn.classList.add('active');
+      } else {
+        // Restaurar materiales
+        currentModel.traverse(n => {
+          if (n.isMesh) n.material.visible = true;
+        });
+        if (wireframeGroup) { scene.remove(wireframeGroup); wireframeGroup = null; }
+        scene.background = new THREE.Color(0x141820);
+        btn.classList.remove('active');
+      }
+    };
+
+    window.toggleAutoRotate = function() {
+      autoRotateActive = !autoRotateActive;
+      const btn = document.getElementById('btnAutoRotate');
+      autoRotateActive ? btn.classList.add('active') : btn.classList.remove('active');
+    };
+
+    window.resetCamera = function() {
+      camera.position.set(0, 1, 3);
+      controls.target.set(0, 0, 0);
+      controls.update();
+    };
+
+    // ── MODAL OPEN / CLOSE ────────────────────────────────────────
+    window.openModal = function(index) {
+      const m = models[index];
+      document.getElementById('modalCategory').textContent = m.category;
+      document.getElementById('modalTitle').textContent    = m.title;
+      document.getElementById('modalStudent').textContent  = m.student;
+      document.getElementById('modalDesc').textContent     = m.desc;
+      document.getElementById('modalTags').innerHTML       = m.tags.map(t => `<span class="tag">${t}</span>`).join('');
+
+      autoRotateActive = true;
       document.getElementById('btnAutoRotate').classList.add('active');
-      viewer.setAttribute('auto-rotate', '');
 
       document.getElementById('modalOverlay').classList.add('active');
       document.body.style.overflow = 'hidden';
-    }
 
-    function closeModal() {
+      setTimeout(() => {
+        resizeRenderer();
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+        animate();
+        loadModel(m.src);
+      }, 50);
+    };
+
+    window.closeModal = function() {
       document.getElementById('modalOverlay').classList.remove('active');
       document.body.style.overflow = '';
-      setTimeout(() => {
-        document.getElementById('modalViewer').removeAttribute('src');
-      }, 300);
-    }
+      if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; }
+      if (currentModel) { scene.remove(currentModel); currentModel = null; }
+      if (wireframeGroup) { scene.remove(wireframeGroup); wireframeGroup = null; }
+      if (mixer) { mixer.stopAllAction(); mixer = null; }
+    };
 
-    function handleOverlayClick(e) {
-      if (e.target === document.getElementById('modalOverlay')) closeModal();
-    }
+    window.handleOverlayClick = function(e) {
+      if (e.target === document.getElementById('modalOverlay')) window.closeModal();
+    };
 
-    function toggleWireframe() {
-      wireframeActive = !wireframeActive;
-      const viewer = document.getElementById('modalViewer');
-      const btn = document.getElementById('btnWireframe');
-      if (wireframeActive) {
-        viewer.setAttribute('style', 'width:100%;height:100%;background:transparent;--poster-color:transparent;');
-        viewer.model && viewer.model.materials && viewer.model.materials.forEach(mat => {
-          mat.wireframe = true;
-        });
-        btn.classList.add('active');
-      } else {
-        viewer.model && viewer.model.materials && viewer.model.materials.forEach(mat => {
-          mat.wireframe = false;
-        });
-        btn.classList.remove('active');
-      }
-    }
-
-    function toggleAutoRotate() {
-      autoRotateActive = !autoRotateActive;
-      const viewer = document.getElementById('modalViewer');
-      const btn = document.getElementById('btnAutoRotate');
-      if (autoRotateActive) {
-        viewer.setAttribute('auto-rotate', '');
-        btn.classList.add('active');
-      } else {
-        viewer.removeAttribute('auto-rotate');
-        btn.classList.remove('active');
-      }
-    }
-
-    function resetCamera() {
-      const viewer = document.getElementById('modalViewer');
-      viewer.cameraOrbit = 'auto auto auto';
-      viewer.fieldOfView = 'auto';
-    }
-
-    function filterCards(category, btn) {
+    // ── FILTERS ───────────────────────────────────────────────────
+    window.filterCards = function(category, btn) {
       document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      const cards = document.querySelectorAll('.card');
       let visible = 0;
-      cards.forEach(card => {
-        if (category === 'all' || card.dataset.category === category) {
-          card.style.display = '';
-          visible++;
-        } else {
-          card.style.display = 'none';
-        }
+      document.querySelectorAll('.card').forEach(card => {
+        const show = category === 'all' || card.dataset.category === category;
+        card.style.display = show ? '' : 'none';
+        if (show) visible++;
       });
       document.getElementById('counter').textContent = `0${visible} MODELOS`;
-    }
+    };
 
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') closeModal();
-    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') window.closeModal(); });
+    window.addEventListener('resize', resizeRenderer);
   </script>
 
 </body>
