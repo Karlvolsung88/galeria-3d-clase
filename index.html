@@ -1,30 +1,874 @@
 <!DOCTYPE html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Escena 3D</title>
-    <script type="module" src="https://cdn.spline.design/@splinetool/hana-viewer@1.2.51/hana-viewer.js"></script>
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Galería 3D — Estudio de Creación Digital 4</title>
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080a0e;
+      --surface: #0e1117;
+      --surface2: #141820;
+      --border: #1e2535;
+      --accent: #00e5ff;
+      --accent2: #ff4d00;
+      --text: #e8eaf0;
+      --muted: #4a5568;
+      --card-hover: #111827;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* NOISE OVERLAY */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 1000;
+      opacity: 0.4;
+    }
+
+    /* HEADER */
+    header {
+      position: relative;
+      padding: 60px 48px 40px;
+      border-bottom: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    header::after {
+      content: '';
+      position: absolute;
+      top: -80px;
+      right: -80px;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(0,229,255,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .header-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-label::before {
+      content: '';
+      width: 20px;
+      height: 1px;
+      background: var(--accent);
+    }
+
+    h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(48px, 7vw, 96px);
+      letter-spacing: 0.02em;
+      line-height: 0.9;
+      color: var(--text);
+    }
+
+    h1 span {
+      color: var(--accent);
+    }
+
+    .header-meta {
+      margin-top: 20px;
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+
+    .header-meta p {
+      font-size: 14px;
+      color: var(--muted);
+      font-weight: 300;
+    }
+
+    .counter {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--accent);
+      background: rgba(0,229,255,0.08);
+      border: 1px solid rgba(0,229,255,0.2);
+      padding: 4px 12px;
+      border-radius: 2px;
+    }
+
+    /* FILTERS */
+    .filters {
+      padding: 24px 48px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .filter-btn {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 6px 16px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 2px;
+      transition: all 0.2s;
+    }
+
+    .filter-btn:hover, .filter-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(0,229,255,0.05);
+    }
+
+    /* GRID */
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1px;
+      background: var(--border);
+      padding: 0;
+    }
+
+    /* CARD */
+    .card {
+      background: var(--surface);
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: background 0.3s;
+      animation: fadeUp 0.5s ease forwards;
+      opacity: 0;
+    }
+
+    .card:nth-child(1) { animation-delay: 0.05s; }
+    .card:nth-child(2) { animation-delay: 0.10s; }
+    .card:nth-child(3) { animation-delay: 0.15s; }
+    .card:nth-child(4) { animation-delay: 0.20s; }
+    .card:nth-child(5) { animation-delay: 0.25s; }
+    .card:nth-child(6) { animation-delay: 0.30s; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .card:hover {
+      background: var(--card-hover);
+    }
+
+    .card:hover .card-overlay {
+      opacity: 1;
+    }
+
+    .card:hover model-viewer {
+      --progress-bar-color: var(--accent);
+    }
+
+    .card-viewer {
+      width: 100%;
+      height: 280px;
+      position: relative;
+      background: var(--surface2);
+    }
+
+    .card-viewer model-viewer {
+      width: 100%;
+      height: 100%;
+      background-color: transparent;
+      --poster-color: transparent;
+    }
+
+    .card-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(8,10,14,0.8) 0%, transparent 50%);
+      opacity: 0;
+      transition: opacity 0.3s;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
+      padding: 16px;
+    }
+
+    .view-btn {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 8px 16px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .card-info {
+      padding: 20px 24px 24px;
+      border-top: 1px solid var(--border);
+    }
+
+    .card-category {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--accent2);
+      margin-bottom: 8px;
+    }
+
+    .card-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 24px;
+      letter-spacing: 0.03em;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .card-student {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 300;
+    }
+
+    .card-tags {
+      margin-top: 12px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 1px;
+    }
+
+    /* MODAL */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(4, 6, 10, 0.95);
+      z-index: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+      backdrop-filter: blur(8px);
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .modal {
+      width: 90vw;
+      max-width: 1100px;
+      height: 85vh;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      overflow: hidden;
+      transform: scale(0.96);
+      transition: transform 0.3s;
+    }
+
+    .modal-overlay.active .modal {
+      transform: scale(1);
+    }
+
+    /* MODAL VIEWER */
+    .modal-viewer-wrap {
+      position: relative;
+      background: var(--surface2);
+      overflow: hidden;
+    }
+
+    .modal-viewer-wrap model-viewer {
+      width: 100%;
+      height: 100%;
+      background-color: transparent;
+      --poster-color: transparent;
+    }
+
+    /* MODAL PANEL */
+    .modal-panel {
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .modal-panel-header {
+      padding: 28px 24px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-category {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--accent2);
+      margin-bottom: 8px;
+    }
+
+    .modal-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 32px;
+      letter-spacing: 0.03em;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .modal-student {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .modal-controls {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .controls-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .control-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .ctrl-btn {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 10px 16px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .ctrl-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(0,229,255,0.05);
+    }
+
+    .ctrl-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(0,229,255,0.08);
+    }
+
+    .ctrl-icon {
+      width: 14px;
+      height: 14px;
+      opacity: 0.6;
+    }
+
+    .modal-desc {
+      padding: 20px 24px;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .modal-desc p {
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--muted);
+      font-weight: 300;
+    }
+
+    .modal-desc-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .modal-tags {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .modal-close {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 36px;
+      height: 36px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      transition: all 0.2s;
+    }
+
+    .modal-close:hover {
+      border-color: var(--accent2);
+      color: var(--accent2);
+    }
+
+    /* FOOTER */
+    footer {
+      padding: 32px 48px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: gap;
+    }
+
+    footer p {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 768px) {
+      header { padding: 40px 24px 32px; }
+      .filters { padding: 16px 24px; }
+      .modal { grid-template-columns: 1fr; grid-template-rows: 55% 45%; }
+      .modal-panel { border-left: none; border-top: 1px solid var(--border); }
+      .modal-controls { display: none; }
+    }
+
+    /* SCROLLBAR */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-label">Estudio de Creación Digital 4</div>
+    <h1>GALERÍA<br><span>3D</span></h1>
+    <div class="header-meta">
+      <p>Modelos interactivos de los estudiantes — Semestre 2025-1</p>
+      <span class="counter" id="counter">06 MODELOS</span>
+    </div>
+  </header>
+
+  <!-- FILTERS -->
+  <div class="filters">
+    <button class="filter-btn active" onclick="filterCards('all', this)">Todos</button>
+    <button class="filter-btn" onclick="filterCards('personaje', this)">Personaje</button>
+    <button class="filter-btn" onclick="filterCards('vehiculo', this)">Vehículo</button>
+    <button class="filter-btn" onclick="filterCards('criatura', this)">Criatura</button>
+    <button class="filter-btn" onclick="filterCards('objeto', this)">Objeto</button>
+  </div>
+
+  <!-- GALLERY -->
+  <div class="gallery-grid" id="gallery">
+
+    <div class="card" data-category="personaje" onclick="openModal(0)">
+      <div class="card-viewer">
+        <model-viewer src="https://modelviewer.dev/shared-assets/models/Astronaut.glb"
+          auto-rotate camera-controls shadow-intensity="1"
+          environment-image="neutral" exposure="1">
+        </model-viewer>
+        <div class="card-overlay">
+          <button class="view-btn">Ver Modelo</button>
+        </div>
+      </div>
+      <div class="card-info">
+        <div class="card-category">Personaje</div>
+        <div class="card-title">Astronauta</div>
+        <div class="card-student">Estudiante: Ana García</div>
+        <div class="card-tags">
+          <span class="tag">PBR</span>
+          <span class="tag">GLB</span>
+          <span class="tag">Rigged</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-category="criatura" onclick="openModal(1)">
+      <div class="card-viewer">
+        <model-viewer src="https://modelviewer.dev/shared-assets/models/Horse.glb"
+          auto-rotate camera-controls shadow-intensity="1"
+          environment-image="neutral" exposure="1">
+        </model-viewer>
+        <div class="card-overlay">
+          <button class="view-btn">Ver Modelo</button>
+        </div>
+      </div>
+      <div class="card-info">
+        <div class="card-category">Criatura</div>
+        <div class="card-title">Caballo</div>
+        <div class="card-student">Estudiante: Carlos Ruiz</div>
+        <div class="card-tags">
+          <span class="tag">Animado</span>
+          <span class="tag">GLB</span>
+          <span class="tag">Texturas</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-category="personaje" onclick="openModal(2)">
+      <div class="card-viewer">
+        <model-viewer src="https://modelviewer.dev/shared-assets/models/RobotExpressive.glb"
+          auto-rotate camera-controls shadow-intensity="1"
+          environment-image="neutral" exposure="1">
+        </model-viewer>
+        <div class="card-overlay">
+          <button class="view-btn">Ver Modelo</button>
+        </div>
+      </div>
+      <div class="card-info">
+        <div class="card-category">Personaje</div>
+        <div class="card-title">Robot Expresivo</div>
+        <div class="card-student">Estudiante: Laura Méndez</div>
+        <div class="card-tags">
+          <span class="tag">PBR</span>
+          <span class="tag">Animado</span>
+          <span class="tag">Rigged</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-category="objeto" onclick="openModal(3)">
+      <div class="card-viewer">
+        <model-viewer src="https://modelviewer.dev/shared-assets/models/reflective-sphere.glb"
+          auto-rotate camera-controls shadow-intensity="1"
+          environment-image="neutral" exposure="1.2">
+        </model-viewer>
+        <div class="card-overlay">
+          <button class="view-btn">Ver Modelo</button>
+        </div>
+      </div>
+      <div class="card-info">
+        <div class="card-category">Objeto</div>
+        <div class="card-title">Esfera PBR</div>
+        <div class="card-student">Estudiante: Diego Torres</div>
+        <div class="card-tags">
+          <span class="tag">PBR</span>
+          <span class="tag">Metalness</span>
+          <span class="tag">Roughness</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-category="objeto" onclick="openModal(4)">
+      <div class="card-viewer">
+        <model-viewer src="https://modelviewer.dev/shared-assets/models/ShopifyModels/Chair.glb"
+          auto-rotate camera-controls shadow-intensity="1"
+          environment-image="neutral" exposure="1">
+        </model-viewer>
+        <div class="card-overlay">
+          <button class="view-btn">Ver Modelo</button>
+        </div>
+      </div>
+      <div class="card-info">
+        <div class="card-category">Objeto</div>
+        <div class="card-title">Silla Diseño</div>
+        <div class="card-student">Estudiante: Valentina Cruz</div>
+        <div class="card-tags">
+          <span class="tag">Hard Surface</span>
+          <span class="tag">GLB</span>
+          <span class="tag">Materiales</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-category="vehiculo" onclick="openModal(5)">
+      <div class="card-viewer">
+        <model-viewer src="https://modelviewer.dev/shared-assets/models/ShopifyModels/Sneaker.glb"
+          auto-rotate camera-controls shadow-intensity="1"
+          environment-image="neutral" exposure="1">
+        </model-viewer>
+        <div class="card-overlay">
+          <button class="view-btn">Ver Modelo</button>
+        </div>
+      </div>
+      <div class="card-info">
+        <div class="card-category">Objeto</div>
+        <div class="card-title">Zapatilla</div>
+        <div class="card-student">Estudiante: Sebastián López</div>
+        <div class="card-tags">
+          <span class="tag">PBR</span>
+          <span class="tag">Detalle</span>
+          <span class="tag">UV Map</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <p>© 2025 Estudio de Creación Digital 4</p>
+    <p>Three.js · Model Viewer · WebGL</p>
+  </footer>
+
+  <!-- MODAL -->
+  <div class="modal-overlay" id="modalOverlay" onclick="handleOverlayClick(event)">
+    <div class="modal" id="modal">
+      <div class="modal-viewer-wrap">
+        <button class="modal-close" onclick="closeModal()">✕</button>
+        <model-viewer id="modalViewer"
+          camera-controls
+          auto-rotate
+          shadow-intensity="1.2"
+          environment-image="neutral"
+          exposure="1"
+          style="width:100%;height:100%;background:transparent;">
+        </model-viewer>
+      </div>
+      <div class="modal-panel">
+        <div class="modal-panel-header">
+          <div class="modal-category" id="modalCategory"></div>
+          <div class="modal-title" id="modalTitle"></div>
+          <div class="modal-student" id="modalStudent"></div>
+        </div>
+
+        <div class="modal-controls">
+          <div class="controls-label">Controles de Vista</div>
+          <div class="control-row">
+            <button class="ctrl-btn" id="btnWireframe" onclick="toggleWireframe()">
+              <svg class="ctrl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <line x1="3" y1="9" x2="21" y2="9"/>
+                <line x1="3" y1="15" x2="21" y2="15"/>
+                <line x1="9" y1="3" x2="9" y2="21"/>
+                <line x1="15" y1="3" x2="15" y2="21"/>
+              </svg>
+              Wireframe
+            </button>
+            <button class="ctrl-btn" id="btnAutoRotate" onclick="toggleAutoRotate()" class="active">
+              <svg class="ctrl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+              Auto Rotar
+            </button>
+            <button class="ctrl-btn" onclick="resetCamera()">
+              <svg class="ctrl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+              </svg>
+              Reset Cámara
+            </button>
+          </div>
+        </div>
+
+        <div class="modal-desc">
+          <div class="modal-desc-label">Descripción</div>
+          <p id="modalDesc"></p>
+        </div>
+
+        <div class="modal-tags" id="modalTags"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const models = [
+      {
+        src: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+        title: "Astronauta",
+        category: "Personaje",
+        student: "Estudiante: Ana García",
+        desc: "Modelo de personaje astronauta con materiales PBR completos. Incluye mapa de rugosidad, metalicidad y oclusión ambiental. Rigging completo para animación.",
+        tags: ["PBR", "GLB", "Rigged", "Normal Map"]
+      },
+      {
+        src: "https://modelviewer.dev/shared-assets/models/Horse.glb",
+        title: "Caballo",
+        category: "Criatura",
+        student: "Estudiante: Carlos Ruiz",
+        desc: "Modelo orgánico de criatura con animación de ciclo de movimiento. Topología optimizada para deformación correcta en animación.",
+        tags: ["Animado", "GLB", "Texturas", "Organic"]
+      },
+      {
+        src: "https://modelviewer.dev/shared-assets/models/RobotExpressive.glb",
+        title: "Robot Expresivo",
+        category: "Personaje",
+        student: "Estudiante: Laura Méndez",
+        desc: "Robot estilizado con materiales metálicos PBR y animaciones de expresión facial. Hard surface modeling con detalles de superficie.",
+        tags: ["PBR", "Animado", "Rigged", "Hard Surface"]
+      },
+      {
+        src: "https://modelviewer.dev/shared-assets/models/reflective-sphere.glb",
+        title: "Esfera PBR",
+        category: "Objeto",
+        student: "Estudiante: Diego Torres",
+        desc: "Ejercicio de materiales PBR avanzados. Demuestra el manejo de metalicidad, rugosidad y reflectividad en un objeto simple para enfocarse en la calidad del material.",
+        tags: ["PBR", "Metalness", "Roughness", "IBL"]
+      },
+      {
+        src: "https://modelviewer.dev/shared-assets/models/ShopifyModels/Chair.glb",
+        title: "Silla Diseño",
+        category: "Objeto",
+        student: "Estudiante: Valentina Cruz",
+        desc: "Modelo de producto industrial con materiales mixtos. Madera y metal con mapas de textura completos. Apto para visualización de producto tipo ecommerce.",
+        tags: ["Hard Surface", "GLB", "Materiales", "Producto"]
+      },
+      {
+        src: "https://modelviewer.dev/shared-assets/models/ShopiyModels/Sneaker.glb",
+        title: "Zapatilla",
+        category: "Objeto",
+        student: "Estudiante: Sebastián López",
+        desc: "Modelo de calzado con alto detalle de superficie y mapas UV precisos. Múltiples materiales diferenciados por zonas con texturas de alta resolución.",
+        tags: ["PBR", "Detalle", "UV Map", "Producto"]
       }
-      html, body {
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        background: #000;
+    ];
+
+    let wireframeActive = false;
+    let autoRotateActive = true;
+
+    function openModal(index) {
+      const m = models[index];
+      const viewer = document.getElementById('modalViewer');
+      viewer.setAttribute('src', m.src);
+      document.getElementById('modalCategory').textContent = m.category;
+      document.getElementById('modalTitle').textContent = m.title;
+      document.getElementById('modalStudent').textContent = m.student;
+      document.getElementById('modalDesc').textContent = m.desc;
+
+      const tagsEl = document.getElementById('modalTags');
+      tagsEl.innerHTML = m.tags.map(t => `<span class="tag">${t}</span>`).join('');
+
+      wireframeActive = false;
+      autoRotateActive = true;
+      document.getElementById('btnWireframe').classList.remove('active');
+      document.getElementById('btnAutoRotate').classList.add('active');
+      viewer.setAttribute('auto-rotate', '');
+
+      document.getElementById('modalOverlay').classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.remove('active');
+      document.body.style.overflow = '';
+      setTimeout(() => {
+        document.getElementById('modalViewer').removeAttribute('src');
+      }, 300);
+    }
+
+    function handleOverlayClick(e) {
+      if (e.target === document.getElementById('modalOverlay')) closeModal();
+    }
+
+    function toggleWireframe() {
+      wireframeActive = !wireframeActive;
+      const viewer = document.getElementById('modalViewer');
+      const btn = document.getElementById('btnWireframe');
+      if (wireframeActive) {
+        viewer.setAttribute('style', 'width:100%;height:100%;background:transparent;--poster-color:transparent;');
+        viewer.model && viewer.model.materials && viewer.model.materials.forEach(mat => {
+          mat.wireframe = true;
+        });
+        btn.classList.add('active');
+      } else {
+        viewer.model && viewer.model.materials && viewer.model.materials.forEach(mat => {
+          mat.wireframe = false;
+        });
+        btn.classList.remove('active');
       }
-      hana-viewer {
-        width: 100%;
-        height: 100%;
-        display: block;
+    }
+
+    function toggleAutoRotate() {
+      autoRotateActive = !autoRotateActive;
+      const viewer = document.getElementById('modalViewer');
+      const btn = document.getElementById('btnAutoRotate');
+      if (autoRotateActive) {
+        viewer.setAttribute('auto-rotate', '');
+        btn.classList.add('active');
+      } else {
+        viewer.removeAttribute('auto-rotate');
+        btn.classList.remove('active');
       }
-    </style>
-  </head>
-  <body>
-    <hana-viewer url="https://prod.spline.design/fIB1AFIQklmNWRc2-ERo/scene.hanacode"></hana-viewer>
-  </body>
+    }
+
+    function resetCamera() {
+      const viewer = document.getElementById('modalViewer');
+      viewer.cameraOrbit = 'auto auto auto';
+      viewer.fieldOfView = 'auto';
+    }
+
+    function filterCards(category, btn) {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const cards = document.querySelectorAll('.card');
+      let visible = 0;
+      cards.forEach(card => {
+        if (category === 'all' || card.dataset.category === category) {
+          card.style.display = '';
+          visible++;
+        } else {
+          card.style.display = 'none';
+        }
+      });
+      document.getElementById('counter').textContent = `0${visible} MODELOS`;
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeModal();
+    });
+  </script>
+
+</body>
 </html>
