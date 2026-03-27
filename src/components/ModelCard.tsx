@@ -57,6 +57,8 @@ export default function ModelCard({
         {/* @ts-ignore */}
         <model-viewer
           src={modelUrl}
+          loading="lazy"
+          reveal="auto"
           auto-rotate
           interaction-prompt="none"
           shadow-intensity="0.8"
