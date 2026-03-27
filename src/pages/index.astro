@@ -1,0 +1,78 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Gallery from '../components/Gallery';
+---
+
+<Layout>
+  <!-- HERO HEADER -->
+  <header class="hero">
+    <!-- Grid decorativo de fondo -->
+    <div class="hero-grid-bg"></div>
+
+    <!-- Glow effects -->
+    <div class="hero-glow hero-glow-1"></div>
+    <div class="hero-glow hero-glow-2"></div>
+    <div class="hero-glow hero-glow-3"></div>
+
+    <!-- Contenido principal -->
+    <div class="hero-content">
+      <div class="hero-label">
+        <span class="hero-label-line"></span>
+        <span>Estudio de Creación Digital 4</span>
+        <span class="hero-label-dot">●</span>
+        <span>Semestre 2026-1</span>
+      </div>
+
+      <div class="hero-titles">
+        <div class="hero-title-row">
+          <h1 class="hero-title-main">GALERÍA</h1>
+          <div class="hero-title-accent">
+            <span class="hero-star">✦</span>
+          </div>
+        </div>
+        <div class="hero-title-row hero-title-row-2">
+          <div class="hero-title-badge">
+            <span>INTERACTIVA</span>
+          </div>
+          <h1 class="hero-title-main hero-title-outline">DE MODELOS</h1>
+        </div>
+        <div class="hero-title-row hero-title-row-3">
+          <h1 class="hero-title-3d">3D</h1>
+          <p class="hero-description">
+            Explora modelos 3D creados por nuestros estudiantes.<br />
+            Materiales PBR, iluminación profesional, listos para<br />
+            experiencias web, AR y VR.
+          </p>
+        </div>
+      </div>
+
+      <!-- Stats bar -->
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <span class="hero-stat-icon">↓</span>
+          <span class="hero-stat-text">Scroll para explorar</span>
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat-stars">★★★★★</span>
+          <span class="hero-stat-text">Calidad PBR</span>
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat-text">Formatos GLB · GLTF</span>
+        </div>
+        <div class="hero-stat hero-stat-end">
+          <span class="hero-stat-text">Universidad El Bosque</span>
+          <span class="hero-stat-icon">↗</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="galeria">
+    <Gallery client:load />
+  </main>
+
+  <footer>
+    <p>© 2026 Estudio de Creación Digital 4 — Universidad El Bosque</p>
+    <p>GLB · PBR · WebXR</p>
+  </footer>
+</Layout>
