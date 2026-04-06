@@ -16,36 +16,45 @@ export default function EstudiantesPage() {
 
   const isAdmin = profile?.role === 'admin';
 
-  const loadData = async () => {
-    try {
-      const data = await fetchAllStudentsWithSkills();
-      setStudents(data);
-    } catch (err) {
-      console.error('Error loading students:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadProfile = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      const p = await getUserProfile();
-      setProfile(p);
-    } else {
-      setProfile(null);
-    }
-  };
-
   useEffect(() => {
-    loadProfile();
-    loadData();
+    let isMounted = true;
 
+    const loadProfile = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!isMounted) return;
+      if (session) {
+        const p = await getUserProfile();
+        if (isMounted) setProfile(p);
+      } else {
+        setProfile(null);
+      }
+    };
+
+    const loadData = async () => {
+      try {
+        const data = await fetchAllStudentsWithSkills();
+        if (isMounted) setStudents(data);
+      } catch (err) {
+        console.error('Error loading students:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    // CRÍTICO: registrar listener antes de loadData — completa la
+    // inicialización de auth en Supabase v2 y evita que la query
+    // quede encolada durante el token refresh
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
       loadProfile();
     });
 
-    return () => subscription.unsubscribe();
+    loadProfile();
+    loadData();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Re-fetch after admin saves skills so cards update

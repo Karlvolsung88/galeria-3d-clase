@@ -9,6 +9,9 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **Loading infinito en /estudiantes para admin logueado** — En Supabase v2, el cliente refresca el token al inicializarse. Queries lanzadas antes de que el refresh complete quedan en cola indefinidamente (sin error, sin timeout). Fix: registrar `onAuthStateChange` antes de lanzar `loadData()` — esto completa la inicialización de auth. Agregado flag `isMounted` para evitar setState en componente desmontado.
+  - Archivos: `EstudiantesPage.tsx`
+
 - **Modal de login descentrado** — `#top-bar` tiene `backdrop-filter` que crea un nuevo containing block para `position: fixed`, haciendo que el overlay del modal quedara posicionado relativo al top bar (44px) en lugar del viewport. Solución: `createPortal` en `AuthModal.tsx` para renderizar el modal directo en `document.body`.
   - Archivos: `AuthModal.tsx`
 
