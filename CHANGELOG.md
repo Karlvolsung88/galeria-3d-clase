@@ -9,10 +9,10 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Corregido
 
-- **ViewTransitions → ClientRouter** — `Layout.astro` usaba `ViewTransitions` (Astro 4/5) que no existe en Astro 6. Reemplazado por `ClientRouter` del mismo módulo `astro:transitions`. Esto bloqueaba el build completo.
+- **Eliminado ClientRouter (ViewTransitions)** — Se removió `ClientRouter` de `Layout.astro`. La navegación SPA de Astro no es compatible con múltiples React islands `client:load` simultáneos: los componentes no se rehidratan correctamente en el swap de página, causando pantallas en blanco. Se vuelve a navegación estándar con recarga completa, que es el comportamiento correcto para este stack.
   - Archivos: `Layout.astro`
 
-- **ArtStationIcon eliminado** — Componente `ArtStationIcon` en `StudentCard.tsx` tenía un path SVG corrupto (`7.messages`) y no se usaba en ningún lugar (las tarjetas usan SVG inline directamente). Eliminado para evitar confusión.
+- **ArtStationIcon eliminado** — Componente `ArtStationIcon` en `StudentCard.tsx` tenía un path SVG corrupto (`7.messages`) y no se usaba en ningún lugar. Eliminado.
   - Archivos: `StudentCard.tsx`
 
 ### Agregado
