@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 
 interface AuthModalProps {
@@ -103,7 +104,7 @@ export default function AuthModal({ onSuccess, onClose }: AuthModalProps) {
     setSuccess('');
   };
 
-  return (
+  return createPortal(
     <div
       className="modal-overlay active"
       onClick={(e) => {
@@ -197,6 +198,7 @@ export default function AuthModal({ onSuccess, onClose }: AuthModalProps) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

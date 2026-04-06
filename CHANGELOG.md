@@ -9,6 +9,9 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **Modal de login descentrado** — `#top-bar` tiene `backdrop-filter` que crea un nuevo containing block para `position: fixed`, haciendo que el overlay del modal quedara posicionado relativo al top bar (44px) en lugar del viewport. Solución: `createPortal` en `AuthModal.tsx` para renderizar el modal directo en `document.body`.
+  - Archivos: `AuthModal.tsx`
+
 - **Loading infinito en /estudiantes, /galeria y /perfil** — Las funciones async `loadData()`, `loadModels()` y `load()` no tenían `try/catch`. Si Supabase fallaba, `setLoading(false)` nunca se ejecutaba y el componente quedaba atrapado en spinner. Agregado `try/catch/finally` en los tres componentes.
   - Archivos: `EstudiantesPage.tsx`, `Gallery.tsx`, `ProfilePage.tsx`
 
