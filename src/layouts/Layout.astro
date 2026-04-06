@@ -1,4 +1,6 @@
 ---
+import UserMenu from '../components/UserMenu';
+
 interface Props {
   title?: string;
   description?: string;
@@ -38,6 +40,19 @@ const {
   <title>{title}</title>
 </head>
 <body>
+  <div id="top-bar">
+    <a href="/galeria-3d-clase/" class="topbar-brand">
+      <span class="topbar-brand-dot">✦</span>
+      <span>Galería 3D</span>
+    </a>
+    <nav class="topbar-nav">
+      <a href="/galeria-3d-clase/" class="topbar-nav-link">Galería</a>
+      <a href="/galeria-3d-clase/estudiantes" class="topbar-nav-link">Estudiantes</a>
+    </nav>
+    <div class="topbar-right">
+      <UserMenu client:load />
+    </div>
+  </div>
   <slot />
 </body>
 </html>

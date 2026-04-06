@@ -69,14 +69,18 @@ export default function Gallery() {
   // Load models + like counts
   const loadModels = async () => {
     setLoading(true);
-    const [modelsRes, counts] = await Promise.all([
-      supabase.from('models').select('*').order('created_at', { ascending: false }),
-      fetchLikeCounts(),
-    ]);
-
-    if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
-    setLikeCounts(counts);
-    setLoading(false);
+    try {
+      const [modelsRes, counts] = await Promise.all([
+        supabase.from('models').select('*').order('created_at', { ascending: false }),
+        fetchLikeCounts(),
+      ]);
+      if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
+      setLikeCounts(counts);
+    } catch (err) {
+      console.error('Error loading models:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -132,13 +136,6 @@ export default function Gallery() {
     loadModels();
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUserId(null);
-    setProfile(null);
-    setUserLikes(new Set());
-  };
-
   return (
     <>
       {/* Filters + Auth controls */}
@@ -154,30 +151,12 @@ export default function Gallery() {
         ))}
 
         <div className="filters-right">
-          {isLoggedIn ? (
-            <>
-              <span className="user-badge">
-                {isAdmin ? '★ ' : ''}{profile?.full_name || 'Usuario'}
-              </span>
-              <button
-                className="filter-btn upload-btn"
-                onClick={() => setShowUpload(true)}
-              >
-                + Subir Modelo
-              </button>
-              <button
-                className="filter-btn logout-btn"
-                onClick={handleLogout}
-              >
-                Salir
-              </button>
-            </>
-          ) : (
+          {isLoggedIn && (
             <button
-              className="filter-btn login-btn"
-              onClick={() => setShowAuth(true)}
+              className="filter-btn upload-btn"
+              onClick={() => setShowUpload(true)}
             >
-              Ingresar
+              + Subir Modelo
             </button>
           )}
         </div>
