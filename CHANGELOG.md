@@ -7,6 +7,16 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Agregado
+
+- **Bio card en tarjetas de estudiante** — Pequeña tarjeta debajo del gráfico hexagonal con links a ArtStation e Instagram. El estudiante autenticado puede editar sus propios links inline; el admin los gestiona desde el Editor de Habilidades.
+  - Archivos: `StudentCard.tsx`, `SkillsEditor.tsx`, `EstudiantesPage.tsx`, `global.css`
+
+- **Campos artstation_url / instagram_url en profiles** — Se agregaron columnas a la tabla `profiles` y política RLS para que el admin pueda actualizar el perfil de cualquier estudiante.
+  - Archivos: `supabase.ts` (interface `Profile`, `StudentWithSkills`, función `updateStudentLinks`)
+
+---
+
 ### Técnico
 
 - **Configuración workflow Claude Code** — Se adopta el mismo esquema de trabajo que AplicacionCarteraCEOP: CLAUDE.md con reglas obligatorias, skills especializados con personas nombradas, comandos slash, metodología Scrumban, estructura docs/.

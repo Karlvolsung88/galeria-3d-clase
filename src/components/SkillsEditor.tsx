@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SKILLS, upsertStudentSkills, type StudentWithSkills, type SkillKey } from '../lib/supabase';
+import { SKILLS, upsertStudentSkills, updateStudentLinks, type StudentWithSkills, type SkillKey } from '../lib/supabase';
 
 interface Props {
   students: StudentWithSkills[];
@@ -10,35 +10,41 @@ type SaveState = 'idle' | 'saving' | 'ok' | 'error';
 
 export default function SkillsEditor({ students, onSaved }: Props) {
   const [selectedId, setSelectedId] = useState<string>(students[0]?.id ?? '');
-  const [values, setValues] = useState<Record<SkillKey, number>>(() => buildInitial(students[0]));
+  const [values, setValues] = useState<Record<SkillKey, number>>(() => buildInitialSkills(students[0]));
+  const [artstation, setArtstation] = useState<string>(students[0]?.artstation_url ?? '');
+  const [instagram, setInstagram] = useState<string>(students[0]?.instagram_url ?? '');
   const [saveState, setSaveState] = useState<SaveState>('idle');
 
-  function buildInitial(student?: StudentWithSkills): Record<SkillKey, number> {
+  function buildInitialSkills(student?: StudentWithSkills): Record<SkillKey, number> {
     const base = Object.fromEntries(SKILLS.map((s) => [s.key, 0])) as Record<SkillKey, number>;
     if (!student) return base;
-    for (const sk of student.student_skills) {
-      base[sk.skill_name] = sk.value;
-    }
+    for (const sk of student.student_skills) base[sk.skill_name] = sk.value;
     return base;
   }
 
   function handleStudentChange(id: string) {
     setSelectedId(id);
     const student = students.find((s) => s.id === id);
-    setValues(buildInitial(student));
+    setValues(buildInitialSkills(student));
+    setArtstation(student?.artstation_url ?? '');
+    setInstagram(student?.instagram_url ?? '');
     setSaveState('idle');
   }
 
   function handleSlider(key: SkillKey, val: number) {
     setValues((prev) => ({ ...prev, [key]: val }));
-    if (saveState === 'ok' || saveState === 'error') setSaveState('idle');
+    if (saveState !== 'idle') setSaveState('idle');
   }
 
   async function handleSave() {
     if (!selectedId) return;
     setSaveState('saving');
     const skills = SKILLS.map((s) => ({ skill_name: s.key, value: values[s.key] }));
-    const ok = await upsertStudentSkills(selectedId, skills);
+    const [okSkills, okLinks] = await Promise.all([
+      upsertStudentSkills(selectedId, skills),
+      updateStudentLinks(selectedId, artstation || null, instagram || null),
+    ]);
+    const ok = okSkills && okLinks;
     setSaveState(ok ? 'ok' : 'error');
     if (ok) onSaved?.(selectedId);
   }
@@ -53,7 +59,7 @@ export default function SkillsEditor({ students, onSaved }: Props) {
         Editor de Habilidades
       </h2>
 
-      {/* Selector de estudiante */}
+      {/* Selector */}
       <div className="skills-editor-row">
         <label className="skills-editor-label" htmlFor="student-select">Estudiante</label>
         <select
@@ -74,10 +80,7 @@ export default function SkillsEditor({ students, onSaved }: Props) {
           <div key={skill.key} className="skills-slider-row">
             <span className="skills-slider-label">{skill.label}</span>
             <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
+              type="range" min={0} max={100} step={1}
               value={values[skill.key]}
               onChange={(e) => handleSlider(skill.key, Number(e.target.value))}
               className="skills-slider"
@@ -86,6 +89,32 @@ export default function SkillsEditor({ students, onSaved }: Props) {
             <span className="skills-slider-value">{values[skill.key]}</span>
           </div>
         ))}
+      </div>
+
+      {/* Links */}
+      <div className="skills-editor-links">
+        <div className="skills-editor-row">
+          <label className="skills-editor-label" htmlFor="artstation-input">ArtStation</label>
+          <input
+            id="artstation-input"
+            type="url"
+            className="skills-editor-input"
+            placeholder="https://www.artstation.com/usuario"
+            value={artstation}
+            onChange={(e) => { setArtstation(e.target.value); if (saveState !== 'idle') setSaveState('idle'); }}
+          />
+        </div>
+        <div className="skills-editor-row">
+          <label className="skills-editor-label" htmlFor="instagram-input">Instagram</label>
+          <input
+            id="instagram-input"
+            type="url"
+            className="skills-editor-input"
+            placeholder="https://www.instagram.com/usuario"
+            value={instagram}
+            onChange={(e) => { setInstagram(e.target.value); if (saveState !== 'idle') setSaveState('idle'); }}
+          />
+        </div>
       </div>
 
       {/* Guardar */}

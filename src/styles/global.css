@@ -1248,7 +1248,7 @@ footer p {
 
 /* ==================== PAGE HEADER ==================== */
 .page-header {
-  padding: 24px 48px 20px;
+  padding: 24px 76px 20px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -1301,15 +1301,27 @@ footer p {
 
 /* ==================== ESTUDIANTES MAIN ==================== */
 .estudiantes-main {
-  padding: 40px 48px;
-  max-width: 1400px;
-  margin: 0 auto;
+  padding: 32px 76px;
 }
 
 .estudiantes-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 1200px) {
+  .estudiantes-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 860px) {
+  .estudiantes-grid { grid-template-columns: repeat(2, 1fr); }
+  .estudiantes-main { padding: 24px 40px; }
+  .page-header { padding: 20px 40px 16px; }
+}
+@media (max-width: 560px) {
+  .estudiantes-grid { grid-template-columns: 1fr; }
+  .estudiantes-main { padding: 20px 16px; }
+  .page-header { padding: 16px 16px 12px; }
 }
 
 .estudiantes-loading {
@@ -1347,10 +1359,10 @@ footer p {
 .student-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  padding: 24px;
+  padding: 14px 20px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
   transition: border-color 0.2s;
 }
 
@@ -1365,8 +1377,8 @@ footer p {
 }
 
 .student-avatar {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: var(--surface2);
   border: 1px solid #00ff8840;
@@ -1374,7 +1386,7 @@ footer p {
   align-items: center;
   justify-content: center;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   color: #00ff88;
   flex-shrink: 0;
@@ -1390,7 +1402,7 @@ footer p {
 
 .student-name {
   font-family: 'DM Sans', sans-serif;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text);
   white-space: nowrap;
@@ -1400,7 +1412,7 @@ footer p {
 
 .student-role-badge {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1628,6 +1640,201 @@ footer p {
 
 .skills-save-btn:disabled {
   opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ==================== SKILLS EDITOR — INPUT LINKS ==================== */
+.skills-editor-links {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skills-editor-input {
+  flex: 1;
+  max-width: 400px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 7px 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.skills-editor-input:focus {
+  border-color: #00ff8860;
+}
+
+.skills-editor-input::placeholder {
+  color: var(--muted);
+}
+
+/* ==================== STUDENT CARD WRAP ==================== */
+.student-card-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ==================== BIO CARD ==================== */
+.student-bio-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-top: none;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+}
+
+.student-bio-links {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.student-bio-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  transition: all 0.18s;
+}
+
+.student-bio-link--artstation {
+  color: #a8b4c4;
+  border-color: #2a3040;
+}
+
+.student-bio-link--artstation:hover {
+  color: #13aff0;
+  border-color: #13aff060;
+}
+
+.student-bio-link--instagram {
+  color: #a8b4c4;
+  border-color: #2a3040;
+}
+
+.student-bio-link--instagram:hover {
+  color: #e1306c;
+  border-color: #e1306c60;
+}
+
+.student-bio-link--empty {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #3a4455;
+  letter-spacing: 0.04em;
+}
+
+.student-bio-edit-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 4px 7px;
+  cursor: pointer;
+  transition: all 0.18s;
+  flex-shrink: 0;
+}
+
+.student-bio-edit-btn:hover {
+  border-color: #00ff8860;
+  color: #00ff88;
+}
+
+/* Bio edit form */
+.student-bio-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.student-bio-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  padding: 5px 10px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.student-bio-input:focus {
+  border-color: #00ff8860;
+}
+
+.student-bio-input::placeholder {
+  color: #3a4455;
+}
+
+.student-bio-edit-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.student-bio-cancel-btn {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.student-bio-cancel-btn:hover {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+.student-bio-save-btn {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid #00ff88;
+  color: #00ff88;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.student-bio-save-btn:hover:not(:disabled) {
+  background: #00ff8815;
+}
+
+.student-bio-save-btn.ok {
+  background: #00ff8820;
+}
+
+.student-bio-save-btn.error {
+  border-color: var(--accent2);
+  color: var(--accent2);
+}
+
+.student-bio-save-btn:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
