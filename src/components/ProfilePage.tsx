@@ -25,20 +25,25 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        window.location.href = '/galeria-3d-clase/';
-        return;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          window.location.href = '/galeria-3d-clase/';
+          return;
+        }
+        const p = await getUserProfile();
+        setProfile(p);
+        if (p) {
+          setFullName(p.full_name ?? '');
+          setBio(p.bio ?? '');
+          setArtstation(p.artstation_url ?? '');
+          setInstagram(p.instagram_url ?? '');
+        }
+      } catch (err) {
+        console.error('Error loading profile:', err);
+      } finally {
+        setLoading(false);
       }
-      const p = await getUserProfile();
-      setProfile(p);
-      if (p) {
-        setFullName(p.full_name ?? '');
-        setBio(p.bio ?? '');
-        setArtstation(p.artstation_url ?? '');
-        setInstagram(p.instagram_url ?? '');
-      }
-      setLoading(false);
     };
     load();
   }, []);

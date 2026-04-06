@@ -9,6 +9,15 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **Loading infinito en /estudiantes, /galeria y /perfil** — Las funciones async `loadData()`, `loadModels()` y `load()` no tenían `try/catch`. Si Supabase fallaba, `setLoading(false)` nunca se ejecutaba y el componente quedaba atrapado en spinner. Agregado `try/catch/finally` en los tres componentes.
+  - Archivos: `EstudiantesPage.tsx`, `Gallery.tsx`, `ProfilePage.tsx`
+
+- **Mutación directa de prop en StudentCard** — `handleSaveLinks()` mutaba directamente `student.artstation_url` y `student.instagram_url`. React no detecta estas mutaciones y la vista no se actualizaba. La vista ahora usa el estado local `artstation`/`instagram` que sí se actualiza al guardar.
+  - Archivos: `StudentCard.tsx`
+
+- **getUserProfile() retornaba undefined** — `.single()` de Supabase retorna `undefined` si no hay fila. Los componentes chequean `!profile` y `undefined` no se comporta igual que `null`. Cambiado a `return data ?? null`.
+  - Archivos: `supabase.ts`
+
 - **Eliminado ClientRouter (ViewTransitions)** — Se removió `ClientRouter` de `Layout.astro`. La navegación SPA de Astro no es compatible con múltiples React islands `client:load` simultáneos: los componentes no se rehidratan correctamente en el swap de página, causando pantallas en blanco. Se vuelve a navegación estándar con recarga completa, que es el comportamiento correcto para este stack.
   - Archivos: `Layout.astro`
 

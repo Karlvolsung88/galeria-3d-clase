@@ -69,14 +69,18 @@ export default function Gallery() {
   // Load models + like counts
   const loadModels = async () => {
     setLoading(true);
-    const [modelsRes, counts] = await Promise.all([
-      supabase.from('models').select('*').order('created_at', { ascending: false }),
-      fetchLikeCounts(),
-    ]);
-
-    if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
-    setLikeCounts(counts);
-    setLoading(false);
+    try {
+      const [modelsRes, counts] = await Promise.all([
+        supabase.from('models').select('*').order('created_at', { ascending: false }),
+        fetchLikeCounts(),
+      ]);
+      if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
+      setLikeCounts(counts);
+    } catch (err) {
+      console.error('Error loading models:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {

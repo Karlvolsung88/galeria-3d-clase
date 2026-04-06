@@ -26,15 +26,11 @@ export default function StudentCard({ student, currentUserId }: Props) {
   const [instagram, setInstagram] = useState(student.instagram_url ?? '');
   const [linkState, setLinkState] = useState<LinkSaveState>('idle');
 
-  const hasLinks = !!(student.artstation_url || student.instagram_url);
-
   async function handleSaveLinks() {
     setLinkState('saving');
     const ok = await updateStudentLinks(student.id, artstation || null, instagram || null);
     setLinkState(ok ? 'ok' : 'error');
     if (ok) {
-      student.artstation_url = artstation || null;
-      student.instagram_url = instagram || null;
       setTimeout(() => { setEditing(false); setLinkState('idle'); }, 800);
     }
   }
@@ -64,8 +60,8 @@ export default function StudentCard({ student, currentUserId }: Props) {
         {!editing ? (
           <>
             <div className="student-bio-links">
-              {student.artstation_url ? (
-                <a href={student.artstation_url} target="_blank" rel="noopener noreferrer"
+              {artstation ? (
+                <a href={artstation} target="_blank" rel="noopener noreferrer"
                   className="student-bio-link student-bio-link--artstation">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                     <path d="M0 17.723l2.027 3.505h.001a2.424 2.424 0 0 0 2.164 1.333h13.457l-2.792-4.838H0zm24 .025c0-.484-.143-.935-.388-1.314L15.728 2.728A2.424 2.424 0 0 0 13.564 1.4H9.419L21.598 22.54l1.92-3.325A2.987 2.987 0 0 0 24 17.748zm-11.26-3.862L7.547 2.973 2.55 11.886h10.19z"/>
@@ -75,8 +71,8 @@ export default function StudentCard({ student, currentUserId }: Props) {
               ) : (
                 <span className="student-bio-link--empty">Sin ArtStation</span>
               )}
-              {student.instagram_url ? (
-                <a href={student.instagram_url} target="_blank" rel="noopener noreferrer"
+              {instagram ? (
+                <a href={instagram} target="_blank" rel="noopener noreferrer"
                   className="student-bio-link student-bio-link--instagram">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                     <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>

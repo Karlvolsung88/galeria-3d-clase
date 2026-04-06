@@ -49,7 +49,7 @@ export async function getUserProfile(): Promise<Profile | null> {
     .eq('id', session.user.id)
     .single();
 
-  return data;
+  return data ?? null;
 }
 
 // --- Likes ---

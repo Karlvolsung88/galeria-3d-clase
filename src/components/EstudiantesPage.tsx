@@ -17,9 +17,14 @@ export default function EstudiantesPage() {
   const isAdmin = profile?.role === 'admin';
 
   const loadData = async () => {
-    const data = await fetchAllStudentsWithSkills();
-    setStudents(data);
-    setLoading(false);
+    try {
+      const data = await fetchAllStudentsWithSkills();
+      setStudents(data);
+    } catch (err) {
+      console.error('Error loading students:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadProfile = async () => {
