@@ -182,7 +182,9 @@ export async function updateProfile(
   const { error } = await supabase
     .from('profiles')
     .update(fields)
-    .eq('id', userId);
+    .eq('id', userId)
+    .select()
+    .single();
 
   if (error) {
     console.error('Error updating profile:', error);
@@ -199,7 +201,9 @@ export async function updateStudentLinks(
   const { error } = await supabase
     .from('profiles')
     .update({ artstation_url: artstation || null, instagram_url: instagram || null })
-    .eq('id', userId);
+    .eq('id', userId)
+    .select()
+    .single();
 
   if (error) {
     console.error('Error updating student links:', error);
