@@ -50,13 +50,58 @@ export default function Gallery() {
   };
 
   useEffect(() => {
-    loadProfile();
+    let isMounted = true;
+
+    const init = async () => {
+      // Esperar que el token refresh de Supabase v2 complete antes
+      // de lanzar cualquier query — sin esto las queries quedan en
+      // cola indefinidamente cuando hay sesión activa
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!isMounted) return;
+
+      if (session) {
+        setUserId(session.user.id);
+        const [p, likes] = await Promise.all([
+          getUserProfile(),
+          fetchUserLikes(session.user.id),
+        ]);
+        if (isMounted) { setProfile(p); setUserLikes(likes); }
+      }
+
+      // Auth resuelto — ahora las queries se ejecutan
+      setLoading(true);
+      try {
+        const [modelsRes, counts] = await Promise.all([
+          supabase.from('models').select('*').order('created_at', { ascending: false }),
+          fetchLikeCounts(),
+        ]);
+        if (!isMounted) return;
+        if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
+        setLikeCounts(counts);
+      } catch (err) {
+        console.error('Error loading models:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      loadProfile();
+      if (!isMounted) return;
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!isMounted) return;
+        if (session) {
+          setUserId(session.user.id);
+          getUserProfile().then(p => { if (isMounted) setProfile(p); });
+          fetchUserLikes(session.user.id).then(l => { if (isMounted) setUserLikes(l); });
+        } else {
+          setUserId(null); setProfile(null); setUserLikes(new Set());
+        }
+      });
     });
 
-    return () => subscription.unsubscribe();
+    init();
+
+    return () => { isMounted = false; subscription.unsubscribe(); };
   }, []);
 
   // Can this user edit/delete a given model?
@@ -65,27 +110,6 @@ export default function Gallery() {
     if (isAdmin) return true;
     return model.user_id === userId;
   };
-
-  // Load models + like counts
-  const loadModels = async () => {
-    setLoading(true);
-    try {
-      const [modelsRes, counts] = await Promise.all([
-        supabase.from('models').select('*').order('created_at', { ascending: false }),
-        fetchLikeCounts(),
-      ]);
-      if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
-      setLikeCounts(counts);
-    } catch (err) {
-      console.error('Error loading models:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadModels();
-  }, []);
 
   const filteredModels = useMemo(() => {
     if (activeFilter === 'all') return models;

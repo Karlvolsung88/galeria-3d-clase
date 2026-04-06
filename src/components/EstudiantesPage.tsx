@@ -19,18 +19,19 @@ export default function EstudiantesPage() {
   useEffect(() => {
     let isMounted = true;
 
-    const loadProfile = async () => {
+    const init = async () => {
+      // Esperar que el token refresh de Supabase v2 complete antes
+      // de lanzar cualquier query — sin esto las queries quedan en
+      // cola indefinidamente cuando hay sesión activa
       const { data: { session } } = await supabase.auth.getSession();
       if (!isMounted) return;
+
       if (session) {
         const p = await getUserProfile();
         if (isMounted) setProfile(p);
-      } else {
-        setProfile(null);
       }
-    };
 
-    const loadData = async () => {
+      // Auth resuelto — ahora las queries se ejecutan
       try {
         const data = await fetchAllStudentsWithSkills();
         if (isMounted) setStudents(data);
@@ -41,20 +42,21 @@ export default function EstudiantesPage() {
       }
     };
 
-    // CRÍTICO: registrar listener antes de loadData — completa la
-    // inicialización de auth en Supabase v2 y evita que la query
-    // quede encolada durante el token refresh
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      loadProfile();
+      if (!isMounted) return;
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!isMounted) return;
+        if (session) {
+          getUserProfile().then(p => { if (isMounted) setProfile(p); });
+        } else {
+          if (isMounted) setProfile(null);
+        }
+      });
     });
 
-    loadProfile();
-    loadData();
+    init();
 
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
+    return () => { isMounted = false; subscription.unsubscribe(); };
   }, []);
 
   // Re-fetch after admin saves skills so cards update
