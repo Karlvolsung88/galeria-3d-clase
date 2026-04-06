@@ -7,6 +7,14 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Corregido
+
+- **ViewTransitions → ClientRouter** — `Layout.astro` usaba `ViewTransitions` (Astro 4/5) que no existe en Astro 6. Reemplazado por `ClientRouter` del mismo módulo `astro:transitions`. Esto bloqueaba el build completo.
+  - Archivos: `Layout.astro`
+
+- **ArtStationIcon eliminado** — Componente `ArtStationIcon` en `StudentCard.tsx` tenía un path SVG corrupto (`7.messages`) y no se usaba en ningún lugar (las tarjetas usan SVG inline directamente). Eliminado para evitar confusión.
+  - Archivos: `StudentCard.tsx`
+
 ### Agregado
 
 - **Barra superior global con UserMenu** — Top bar sticky en todas las páginas con navegación (Galería, Estudiantes) y badge de usuario a la derecha. Si está logueado muestra dropdown con Ver Perfil, Editar Perfil y Logout. Si no, muestra botón Login.

@@ -1,5 +1,6 @@
 ---
 import UserMenu from '../components/UserMenu';
+import { ClientRouter } from 'astro:transitions';
 
 interface Props {
   title?: string;
@@ -24,6 +25,9 @@ const {
   <meta property="og:title" content={title} />
   <meta property="og:description" content={description} />
   <meta property="og:type" content="website" />
+
+  <!-- View Transitions — navegación SPA sin recargas completas -->
+  <ClientRouter />
 
   <!-- Preconnect to critical origins -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />

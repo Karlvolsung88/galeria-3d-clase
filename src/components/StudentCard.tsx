@@ -15,20 +15,6 @@ function Initials({ name }: { name: string }) {
   return <div className="student-avatar">{initials.toUpperCase()}</div>;
 }
 
-const ArtStationIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M0 17.723l2.027 3.505h.001a2.424 2.424 0 0 0 2.164 1.333h13.457l-2.792-4.838H0zm24 .025c0-.484-.143-.935-.388-1.314L15.728 2.728a2.424 2.424 0 0 0-2.164-1.333H9.419L21.598 22.54l1.92-3.325c.32-.555.482-1.176.482-1.467zm-11.26-3.862L7.messages 2.973 2.55 11.886h10.19z"/>
-  </svg>
-);
-
-const InstagramIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-    <circle cx="12" cy="12" r="4"/>
-    <circle cx="17.5" cy="6.5" r="0.5" fill="currentColor" strokeWidth="0"/>
-  </svg>
-);
-
 type LinkSaveState = 'idle' | 'saving' | 'ok' | 'error';
 
 export default function StudentCard({ student, currentUserId }: Props) {
