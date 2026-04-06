@@ -617,6 +617,20 @@ body::before {
   letter-spacing: 0.05em;
 }
 
+.card-comment-icon {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  margin-left: 10px;
+}
+
+.card-comment-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+}
+
 /* Heart pop animation */
 @keyframes heartPop {
   0%   { transform: scale(1); }

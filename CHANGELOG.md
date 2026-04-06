@@ -7,6 +7,11 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Agregado
+
+- **Contador de comentarios en ModelCard** — Icono de burbuja de chat con conteo de comentarios junto al corazón de likes, estilo Instagram. Solo informativo (no clickeable). Nuevas funciones: `fetchCommentCounts()` en `supabase.ts`; nuevo prop `commentCount` en `ModelCard`.
+  - Archivos: `supabase.ts`, `Gallery.tsx`, `ModelCard.tsx`, `global.css`
+
 ### Corregido
 
 - **Comentarios con 400 Bad Request** — `.select('*, profiles(full_name, role)')` en PostgREST falla si la FK `comments_user_id_fkey` apunta a `auth.users` en lugar de `public.profiles`. Fix: reemplazado join PostgREST por dos queries separadas — `fetchComments` hace `select('*')` y luego fetch de profiles por `user_id[]`; `addComment` hace lo mismo post-insert. La interfaz `CommentRow` no cambia.
