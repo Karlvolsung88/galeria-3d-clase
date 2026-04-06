@@ -20,7 +20,7 @@ Cada skill tiene una persona con nombre propio. Estos nombres son FIJOS y debo u
 | **Natalia Vargas Ospina** | Arquitecta Web | `software-architect-web` |
 | **Isabella Moreno Ríos** | Diseñadora Frontend 3D | `frontend-3d` |
 | **Andrés Cano Herrera** | Especialista en Testing | `testing-web` |
-| **Diego Ramírez Castellanos** | Seguridad / Supabase | `security-supabase` |
+| **Diego Ramírez Castellanos** | Data Lead & Arquitecto de Datos | `security-supabase` |
 | **Mateo Gutiérrez Reyes** | DevOps / Deploy | `deploy-ghpages` |
 | **Valentina Soto Parra** | QA Lead | `qa` |
 

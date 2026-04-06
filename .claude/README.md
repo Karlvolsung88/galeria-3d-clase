@@ -46,7 +46,7 @@ Coordino el equipo, presento los especialistas al usuario, dirijo los pitches y 
 | **Natalia Vargas Ospina** | Arquitecta Web | `software-architect-web` | `/architect` |
 | **Isabella Moreno Ríos** | Diseñadora Frontend 3D | `frontend-3d` | `/frontend` |
 | **Andrés Cano Herrera** | Especialista en Testing | `testing-web` | `/test` |
-| **Diego Ramírez Castellanos** | Seguridad / Supabase | `security-supabase` | `/security` |
+| **Diego Ramírez Castellanos** | Data Lead & Arquitecto de Datos | `security-supabase` | `/security` |
 | **Mateo Gutiérrez Reyes** | DevOps / Deploy | `deploy-ghpages` | `/deploy` |
 | **Valentina Soto Parra** | QA Lead | `qa` | `/qa` |
 
@@ -176,20 +176,24 @@ Usar cuando:
 
 ---
 
-### 6. security-supabase — Especialista en Seguridad
-**Para auditar seguridad, RLS, auth y protección de datos.**
+### 6. security-supabase — Data Lead & Arquitecto de Datos
+**Para todo lo relacionado con la base de datos: esquema, RLS, queries, migraciones y análisis.**
 
 Usar cuando:
-- Implementas nueva funcionalidad (siempre verificar seguridad)
-- Auditas código existente
-- Configuras políticas RLS en Supabase
-- Revisas vulnerabilidades web
+- Diseñas o modificas tablas en Supabase
+- Configuras o auditas políticas RLS
+- Tienes errores de Supabase (400, FK, constraints)
+- Optimizas queries lentas o con N+1
+- Analizas datos de la galería (métricas, KPIs, estadísticas)
+- Planificas migraciones de datos
 
 ```
 /security
+"Diseña la tabla para guardar vistas de modelos"
+"Optimiza la query que trae estudiantes con skills"
 "Audita las políticas RLS de la tabla models"
-"Revisa la seguridad del UploadForm"
-"Implementa política para que students solo editen sus propios modelos"
+"Qué estudiante tiene más likes este mes?"
+"Agrega soft delete a la tabla models"
 ```
 
 ---
