@@ -87,23 +87,41 @@ export async function toggleLike(modelId: string, userId: string, currentlyLiked
 // --- Comments ---
 
 export async function fetchComments(modelId: string): Promise<CommentRow[]> {
-  const { data } = await supabase
+  const { data: comments } = await supabase
     .from('comments')
-    .select('*, profiles(full_name, role)')
+    .select('*')
     .eq('model_id', modelId)
     .order('created_at', { ascending: true });
 
-  return (data || []) as CommentRow[];
+  if (!comments || comments.length === 0) return [];
+
+  const userIds = [...new Set(comments.map((c) => c.user_id))];
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, full_name, role')
+    .in('id', userIds);
+
+  const profileMap = new Map((profiles || []).map((p) => [p.id, { full_name: p.full_name, role: p.role }]));
+
+  return comments.map((c) => ({ ...c, profiles: profileMap.get(c.user_id) })) as CommentRow[];
 }
 
 export async function addComment(modelId: string, userId: string, text: string): Promise<CommentRow | null> {
-  const { data } = await supabase
+  const { data: comment } = await supabase
     .from('comments')
     .insert({ model_id: modelId, user_id: userId, text })
-    .select('*, profiles(full_name, role)')
+    .select('*')
     .single();
 
-  return data as CommentRow | null;
+  if (!comment) return null;
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, role')
+    .eq('id', userId)
+    .single();
+
+  return { ...comment, profiles: profile ?? undefined } as CommentRow;
 }
 
 export async function deleteComment(commentId: string) {

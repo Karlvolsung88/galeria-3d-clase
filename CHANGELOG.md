@@ -9,6 +9,12 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **Comentarios con 400 Bad Request** — `.select('*, profiles(full_name, role)')` en PostgREST falla si la FK `comments_user_id_fkey` apunta a `auth.users` en lugar de `public.profiles`. Fix: reemplazado join PostgREST por dos queries separadas — `fetchComments` hace `select('*')` y luego fetch de profiles por `user_id[]`; `addComment` hace lo mismo post-insert. La interfaz `CommentRow` no cambia.
+  - Archivos: `supabase.ts`
+
+- **Queries Supabase colgadas con sesión activa en Gallery y EstudiantesPage** — Supabase v2 encola todas las queries mientras refresca el token. Las queries lanzadas antes de que `getSession()` resuelva nunca se envían a la red. Fix: función `init()` que hace `await getSession()` primero, luego ejecuta las queries. Aplicado en Gallery.tsx y EstudiantesPage.tsx.
+  - Archivos: `Gallery.tsx`, `EstudiantesPage.tsx`
+
 - **Loading infinito en /estudiantes para admin logueado** — En Supabase v2, el cliente refresca el token al inicializarse. Queries lanzadas antes de que el refresh complete quedan en cola indefinidamente (sin error, sin timeout). Fix: registrar `onAuthStateChange` antes de lanzar `loadData()` — esto completa la inicialización de auth. Agregado flag `isMounted` para evitar setState en componente desmontado.
   - Archivos: `EstudiantesPage.tsx`
 
