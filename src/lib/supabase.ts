@@ -54,6 +54,19 @@ export async function getUserProfile(): Promise<Profile | null> {
 
 // --- Likes ---
 
+export async function fetchCommentCounts(): Promise<Record<string, number>> {
+  const { data } = await supabase
+    .from('comments')
+    .select('model_id');
+
+  if (!data) return {};
+  const counts: Record<string, number> = {};
+  for (const row of data) {
+    counts[row.model_id] = (counts[row.model_id] || 0) + 1;
+  }
+  return counts;
+}
+
 export async function fetchLikeCounts(): Promise<Record<string, number>> {
   const { data } = await supabase
     .from('likes')

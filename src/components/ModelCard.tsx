@@ -8,6 +8,7 @@ interface ModelCardProps {
   modelUrl: string;
   canEdit: boolean;
   likeCount: number;
+  commentCount: number;
   isLiked: boolean;
   onLike: () => void;
   onClick: () => void;
@@ -37,6 +38,7 @@ export default function ModelCard({
   modelUrl,
   canEdit,
   likeCount,
+  commentCount,
   isLiked,
   onLike,
   onClick,
@@ -104,6 +106,12 @@ export default function ModelCard({
             </svg>
           </button>
           <span className="card-like-count">{likeCount}</span>
+          <span className="card-comment-icon" aria-label={`${commentCount} comentarios`}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </span>
+          <span className="card-comment-count">{commentCount}</span>
         </div>
       </div>
 

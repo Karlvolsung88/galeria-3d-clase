@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { supabase, getUserProfile, fetchLikeCounts, fetchUserLikes, toggleLike } from '../lib/supabase';
+import { supabase, getUserProfile, fetchLikeCounts, fetchCommentCounts, fetchUserLikes, toggleLike } from '../lib/supabase';
 import type { ModelRow, Profile } from '../lib/supabase';
 import ModelCard from './ModelCard';
 import ModelModal from './ModelModal';
@@ -27,6 +27,7 @@ export default function Gallery() {
   const [userId, setUserId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<ModelRow | null>(null);
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [userLikes, setUserLikes] = useState<Set<string>>(new Set());
   const modalCounter = useRef(0);
 
@@ -71,13 +72,15 @@ export default function Gallery() {
       // Auth resuelto — ahora las queries se ejecutan
       setLoading(true);
       try {
-        const [modelsRes, counts] = await Promise.all([
+        const [modelsRes, counts, commentCountsData] = await Promise.all([
           supabase.from('models').select('*').order('created_at', { ascending: false }),
           fetchLikeCounts(),
+          fetchCommentCounts(),
         ]);
         if (!isMounted) return;
         if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
         setLikeCounts(counts);
+        setCommentCounts(commentCountsData);
       } catch (err) {
         console.error('Error loading models:', err);
       } finally {
@@ -214,6 +217,7 @@ export default function Gallery() {
               modelUrl={model.file_url}
               canEdit={canEdit(model)}
               likeCount={likeCounts[model.id] || 0}
+              commentCount={commentCounts[model.id] || 0}
               isLiked={userLikes.has(model.id)}
               onLike={() => handleToggleLike(model.id)}
               onClick={() => handleOpenModal(model)}
