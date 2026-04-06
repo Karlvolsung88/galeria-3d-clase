@@ -106,3 +106,87 @@ export async function addComment(modelId: string, userId: string, text: string):
 export async function deleteComment(commentId: string) {
   await supabase.from('comments').delete().eq('id', commentId);
 }
+
+// --- Skills ---
+
+export const SKILLS = [
+  { key: 'modelado_3d',     label: 'Modelado 3D'       },
+  { key: 'escultura',       label: 'Escultura Digital'  },
+  { key: 'uv_mapping',      label: 'UV Mapping'         },
+  { key: 'texturizado_pbr', label: 'Texturizado PBR'    },
+  { key: 'optimizacion',    label: 'Optimización'       },
+  { key: 'renderizado',     label: 'Renderizado'        },
+] as const;
+
+export type SkillKey = typeof SKILLS[number]['key'];
+
+export interface StudentSkill {
+  skill_name: SkillKey;
+  value: number;
+}
+
+export interface StudentWithSkills {
+  id: string;
+  full_name: string;
+  role: 'admin' | 'student';
+  student_skills: StudentSkill[];
+  models: Pick<ModelRow, 'id' | 'title' | 'file_url' | 'category'>[];
+}
+
+export async function fetchAllStudentsWithSkills(): Promise<StudentWithSkills[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(`
+      id,
+      full_name,
+      role,
+      student_skills ( skill_name, value ),
+      models ( id, title, file_url, category )
+    `)
+    .eq('role', 'student')
+    .order('full_name');
+
+  if (error) {
+    console.error('Error fetching students with skills:', error);
+    return [];
+  }
+
+  return (data ?? []) as StudentWithSkills[];
+}
+
+export async function fetchStudentSkills(userId: string): Promise<StudentSkill[]> {
+  const { data, error } = await supabase
+    .from('student_skills')
+    .select('skill_name, value')
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error fetching student skills:', error);
+    return [];
+  }
+
+  return (data ?? []) as StudentSkill[];
+}
+
+export async function upsertStudentSkills(
+  userId: string,
+  skills: { skill_name: SkillKey; value: number }[]
+): Promise<boolean> {
+  const rows = skills.map((s) => ({
+    user_id: userId,
+    skill_name: s.skill_name,
+    value: s.value,
+    updated_at: new Date().toISOString(),
+  }));
+
+  const { error } = await supabase
+    .from('student_skills')
+    .upsert(rows, { onConflict: 'user_id,skill_name' });
+
+  if (error) {
+    console.error('Error upserting student skills:', error);
+    return false;
+  }
+
+  return true;
+}
