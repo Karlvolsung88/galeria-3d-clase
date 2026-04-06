@@ -9,6 +9,12 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Agregado
 
+- **Barra superior global con UserMenu** — Top bar sticky en todas las páginas con navegación (Galería, Estudiantes) y badge de usuario a la derecha. Si está logueado muestra dropdown con Ver Perfil, Editar Perfil y Logout. Si no, muestra botón Login.
+  - Archivos: `Layout.astro`, `UserMenu.tsx`, `global.css`
+
+- **Página /perfil** — Vista y edición del perfil de usuario: nombre completo, bio (150 chars, límite Instagram), ArtStation URL, Instagram URL. Accesible desde el dropdown del UserMenu.
+  - Archivos: `perfil.astro`, `ProfilePage.tsx`, `supabase.ts` (función `updateProfile`)
+
 - **Bio card en tarjetas de estudiante** — Pequeña tarjeta debajo del gráfico hexagonal con links a ArtStation e Instagram. El estudiante autenticado puede editar sus propios links inline; el admin los gestiona desde el Editor de Habilidades.
   - Archivos: `StudentCard.tsx`, `SkillsEditor.tsx`, `EstudiantesPage.tsx`, `global.css`
 

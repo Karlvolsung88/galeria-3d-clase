@@ -27,6 +27,7 @@ export interface Profile {
   created_at: string;
   artstation_url?: string | null;
   instagram_url?: string | null;
+  bio?: string | null;
 }
 
 export interface CommentRow {
@@ -134,6 +135,7 @@ export interface StudentWithSkills {
   student_skills: StudentSkill[];
   artstation_url?: string | null;
   instagram_url?: string | null;
+  bio?: string | null;
 }
 
 export async function fetchAllStudentsWithSkills(): Promise<StudentWithSkills[]> {
@@ -145,6 +147,7 @@ export async function fetchAllStudentsWithSkills(): Promise<StudentWithSkills[]>
       role,
       artstation_url,
       instagram_url,
+      bio,
       student_skills ( skill_name, value )
     `)
     .eq('role', 'student')
@@ -170,6 +173,22 @@ export async function fetchStudentSkills(userId: string): Promise<StudentSkill[]
   }
 
   return (data ?? []) as StudentSkill[];
+}
+
+export async function updateProfile(
+  userId: string,
+  fields: { full_name?: string; bio?: string | null; artstation_url?: string | null; instagram_url?: string | null }
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('profiles')
+    .update(fields)
+    .eq('id', userId);
+
+  if (error) {
+    console.error('Error updating profile:', error);
+    return false;
+  }
+  return true;
 }
 
 export async function updateStudentLinks(
