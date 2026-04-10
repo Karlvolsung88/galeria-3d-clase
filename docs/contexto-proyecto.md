@@ -74,6 +74,7 @@ comments   (user_id → auth.users, model_id → models, text)
 | **Diego Ramírez Castellanos** | Data Lead & Arquitecto de Datos | `security-supabase` | `/security` |
 | **Mateo Gutiérrez Reyes** | DevOps / Deploy | `deploy-ghpages` | `/deploy` |
 | **Valentina Soto Parra** | QA Lead | `qa` | `/qa` |
+| **Felipe Vargas Montoya** | Especialista Browser & JavaScript | `browser-js-expert` | `/browser` |
 
 ---
 
