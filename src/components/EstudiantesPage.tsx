@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   supabase,
+  getSessionSafe,
   getUserProfile,
   fetchAllStudentsWithSkills,
   type Profile,
@@ -23,7 +24,7 @@ export default function EstudiantesPage() {
       // Esperar que el token refresh de Supabase v2 complete antes
       // de lanzar cualquier query — sin esto las queries quedan en
       // cola indefinidamente cuando hay sesión activa
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await getSessionSafe();
       if (!isMounted) return;
 
       if (session) {
@@ -44,7 +45,7 @@ export default function EstudiantesPage() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
       if (!isMounted) return;
-      supabase.auth.getSession().then(({ data: { session } }) => {
+      getSessionSafe().then(({ data: { session } }) => {
         if (!isMounted) return;
         if (session) {
           getUserProfile().then(p => { if (isMounted) setProfile(p); });

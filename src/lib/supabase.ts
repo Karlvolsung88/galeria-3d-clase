@@ -5,6 +5,19 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// getSession() puede colgarse indefinidamente en Edge cuando hay una sesión
+// en localStorage y Enhanced Security Mode bloquea el refresh del token.
+// Este wrapper garantiza que init() siempre avanza — si no resuelve en 5s,
+// trata la sesión como null y carga los datos públicos de todas formas.
+export async function getSessionSafe() {
+  return Promise.race([
+    supabase.auth.getSession(),
+    new Promise<{ data: { session: null }; error: null }>((resolve) =>
+      setTimeout(() => resolve({ data: { session: null }, error: null }), 5000)
+    ),
+  ]);
+}
+
 export interface ModelRow {
   id: string;
   title: string;

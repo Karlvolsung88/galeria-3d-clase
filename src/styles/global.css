@@ -1040,6 +1040,21 @@ footer p {
   background: var(--surface);
 }
 
+/* Indicador sutil de refresh — no reemplaza el grid, aparece junto al contador */
+.gallery-refreshing-indicator {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+  animation: refreshPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes refreshPulse {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 0.9; }
+}
+
 /* UPLOAD MODAL */
 .upload-modal {
   width: 90vw;

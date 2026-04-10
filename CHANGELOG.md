@@ -7,12 +7,26 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Corregido
+
+- **Galería y Estudiantes no cargan en Edge tras primer reload** — Edge Enhanced Security Mode bloquea silenciosamente el refresh del token de Supabase v2, dejando `getSession()` colgada indefinidamente. Fix: `getSessionSafe()` en `supabase.ts` — wrapper con timeout de 5s que trata la sesión como null si no resuelve, garantizando que las queries públicas siempre se ejecuten.
+  - Archivos: `supabase.ts`, `Gallery.tsx`, `EstudiantesPage.tsx`
+
+- **Blancos y parpadeos al editar/subir/borrar modelos** — `loadModels()` hacía `setLoading(true)` en cada operación CRUD, desmontando todos los `<model-viewer>` y destruyendo sus contextos WebGL. Fix: separar `initialLoading` (primera carga, puede desmontar grid) de `refreshing` (actualizaciones post-CRUD, grid permanece montado). Los model-viewer nunca se desmontan en operaciones normales.
+- **Race condition en llamadas concurrentes a loadModels** — Si se llamaba dos veces seguido, la respuesta más lenta podía sobreescribir la más reciente. Fix: `loadVersionRef` cancela respuestas stale.
+- **Loading infinito si getSession() falla** — `init()` no tenía try/catch envolvente; si `getSession()` lanzaba excepción, `setInitialLoading(false)` nunca corría. Fix: try/catch con fallback a `setInitialLoading(false)`.
+- **Indicador de refresh sutil** — Al actualizar datos post-CRUD aparece "actualizando…" junto al contador de modelos (sin reemplazar el grid).
+  - Archivos: `Gallery.tsx`, `global.css`
+
 ### Agregado
 
 - **Contador de comentarios en ModelCard** — Icono de burbuja de chat con conteo de comentarios junto al corazón de likes, estilo Instagram. Solo informativo (no clickeable). Nuevas funciones: `fetchCommentCounts()` en `supabase.ts`; nuevo prop `commentCount` en `ModelCard`.
   - Archivos: `supabase.ts`, `Gallery.tsx`, `ModelCard.tsx`, `global.css`
 
 ### Corregido
+
+- **Galería no se refresca al borrar/subir/editar modelo** — `loadModels()` se llamaba en `handleDelete`, `UploadForm.onSuccess` y `EditModelForm.onSave` pero la función nunca estaba definida, causando `ReferenceError`. Fix: extraer la lógica de fetch (modelos + likes + comments) del `init()` a una función `loadModels()` reutilizable.
+  - Archivos: `Gallery.tsx`
 
 - **Comentarios con 400 Bad Request** — `.select('*, profiles(full_name, role)')` en PostgREST falla si la FK `comments_user_id_fkey` apunta a `auth.users` en lugar de `public.profiles`. Fix: reemplazado join PostgREST por dos queries separadas — `fetchComments` hace `select('*')` y luego fetch de profiles por `user_id[]`; `addComment` hace lo mismo post-insert. La interfaz `CommentRow` no cambia.
   - Archivos: `supabase.ts`

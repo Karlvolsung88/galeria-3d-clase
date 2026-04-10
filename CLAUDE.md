@@ -23,6 +23,7 @@ Cada skill tiene una persona con nombre propio. Estos nombres son FIJOS y debo u
 | **Diego Ramírez Castellanos** | Data Lead & Arquitecto de Datos | `security-supabase` |
 | **Mateo Gutiérrez Reyes** | DevOps / Deploy | `deploy-ghpages` |
 | **Valentina Soto Parra** | QA Lead | `qa` |
+| **Felipe Vargas Montoya** | Especialista Browser & JavaScript | `browser-js-expert` |
 
 ### Formato de informes
 

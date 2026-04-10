@@ -49,6 +49,7 @@ Coordino el equipo, presento los especialistas al usuario, dirijo los pitches y 
 | **Diego Ramírez Castellanos** | Data Lead & Arquitecto de Datos | `security-supabase` | `/security` |
 | **Mateo Gutiérrez Reyes** | DevOps / Deploy | `deploy-ghpages` | `/deploy` |
 | **Valentina Soto Parra** | QA Lead | `qa` | `/qa` |
+| **Felipe Vargas Montoya** | Especialista Browser & JavaScript | `browser-js-expert` | `/browser` |
 
 ### Metodología: Scrumban
 
@@ -216,6 +217,27 @@ Usar cuando:
 
 ---
 
+### 9. browser-js-expert — Especialista Browser & JavaScript
+**Para bugs cross-browser, WebGL, model-viewer, y compatibilidad JS.**
+
+Usar cuando:
+- `model-viewer` no muestra el 3D en Edge, Safari o Firefox
+- Hay diferencias de rendering entre navegadores
+- WebGL no funciona o usa software rendering
+- Hay errores de JS específicos de un browser
+- Problemas en iOS (todos los browsers usan WebKit)
+
+```
+/browser
+"El modelo 3D no carga en Edge"
+"Safari no muestra el model-viewer"
+"En Firefox funciona pero en Chrome no"
+"WebGL error en la consola"
+"El modelo se ve diferente en iOS"
+```
+
+---
+
 ### 8. qa — Quality Assurance
 **Para revisión estructurada antes de hacer commit/deploy.**
 
@@ -245,6 +267,7 @@ Usar cuando:
 | `/security` | security-supabase | Seguridad, RLS, auth |
 | `/deploy` | deploy-ghpages | Deploy a GitHub Pages |
 | `/qa` | qa | Quality Assurance completo |
+| `/browser` | browser-js-expert | Bugs cross-browser, WebGL, model-viewer |
 
 ---
 

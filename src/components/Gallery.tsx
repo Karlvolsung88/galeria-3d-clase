@@ -1,5 +1,5 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
-import { supabase, getUserProfile, fetchLikeCounts, fetchCommentCounts, fetchUserLikes, toggleLike } from '../lib/supabase';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { supabase, getSessionSafe, getUserProfile, fetchLikeCounts, fetchCommentCounts, fetchUserLikes, toggleLike } from '../lib/supabase';
 import type { ModelRow, Profile } from '../lib/supabase';
 import ModelCard from './ModelCard';
 import ModelModal from './ModelModal';
@@ -17,7 +17,10 @@ const categories = [
 
 export default function Gallery() {
   const [models, setModels] = useState<ModelRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  // initialLoading: solo true en la primera carga — controla el spinner grande
+  // refreshing: true durante actualizaciones post-CRUD — el grid NO se desmonta
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedModel, setSelectedModel] = useState<ModelRow | null>(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -30,67 +33,77 @@ export default function Gallery() {
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [userLikes, setUserLikes] = useState<Set<string>>(new Set());
   const modalCounter = useRef(0);
+  // Versión para cancelar race conditions — si una llamada stale resuelve tarde,
+  // compara su versión con la actual y descarta el setState si no coincide
+  const loadVersionRef = useRef(0);
 
   const isLoggedIn = !!userId;
   const isAdmin = profile?.role === 'admin';
 
-  // Check auth + load profile
-  const loadProfile = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      setUserId(session.user.id);
-      const p = await getUserProfile();
-      setProfile(p);
-      const likes = await fetchUserLikes(session.user.id);
-      setUserLikes(likes);
+  // isInitial=true → primera carga (muestra spinner grande, puede desmontar grid)
+  // isInitial=false → refresh post-CRUD (grid permanece montado, indicador sutil)
+  const loadModels = useCallback(async (isInitial = false) => {
+    const version = ++loadVersionRef.current;
+
+    if (isInitial) {
+      setInitialLoading(true);
     } else {
-      setUserId(null);
-      setProfile(null);
-      setUserLikes(new Set());
+      setRefreshing(true);
     }
-  };
+
+    try {
+      const [modelsRes, counts, commentCountsData] = await Promise.all([
+        supabase.from('models').select('*').order('created_at', { ascending: false }),
+        fetchLikeCounts(),
+        fetchCommentCounts(),
+      ]);
+      // Descartar si una llamada más reciente ya tomó el control
+      if (loadVersionRef.current !== version) return;
+      if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
+      setLikeCounts(counts);
+      setCommentCounts(commentCountsData);
+    } catch (err) {
+      console.error('Error loading models:', err);
+    } finally {
+      if (loadVersionRef.current === version) {
+        setInitialLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
 
     const init = async () => {
-      // Esperar que el token refresh de Supabase v2 complete antes
-      // de lanzar cualquier query — sin esto las queries quedan en
-      // cola indefinidamente cuando hay sesión activa
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!isMounted) return;
-
-      if (session) {
-        setUserId(session.user.id);
-        const [p, likes] = await Promise.all([
-          getUserProfile(),
-          fetchUserLikes(session.user.id),
-        ]);
-        if (isMounted) { setProfile(p); setUserLikes(likes); }
-      }
-
-      // Auth resuelto — ahora las queries se ejecutan
-      setLoading(true);
       try {
-        const [modelsRes, counts, commentCountsData] = await Promise.all([
-          supabase.from('models').select('*').order('created_at', { ascending: false }),
-          fetchLikeCounts(),
-          fetchCommentCounts(),
-        ]);
+        // Esperar que el token refresh de Supabase v2 complete antes
+        // de lanzar cualquier query — sin esto las queries quedan en
+        // cola indefinidamente cuando hay sesión activa
+        const { data: { session } } = await getSessionSafe();
         if (!isMounted) return;
-        if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
-        setLikeCounts(counts);
-        setCommentCounts(commentCountsData);
+
+        if (session) {
+          setUserId(session.user.id);
+          const [p, likes] = await Promise.all([
+            getUserProfile(),
+            fetchUserLikes(session.user.id),
+          ]);
+          if (isMounted) { setProfile(p); setUserLikes(likes); }
+        }
+
+        // Auth resuelto — primera carga con spinner grande
+        await loadModels(true);
       } catch (err) {
-        console.error('Error loading models:', err);
-      } finally {
-        if (isMounted) setLoading(false);
+        console.error('Error en init:', err);
+        // Garantizar que el spinner no quede infinito si getSession() falla
+        if (isMounted) setInitialLoading(false);
       }
     };
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
       if (!isMounted) return;
-      supabase.auth.getSession().then(({ data: { session } }) => {
+      getSessionSafe().then(({ data: { session } }) => {
         if (!isMounted) return;
         if (session) {
           setUserId(session.user.id);
@@ -105,7 +118,7 @@ export default function Gallery() {
     init();
 
     return () => { isMounted = false; subscription.unsubscribe(); };
-  }, []);
+  }, [loadModels]);
 
   // Can this user edit/delete a given model?
   const canEdit = (model: ModelRow): boolean => {
@@ -189,16 +202,19 @@ export default function Gallery() {
         </div>
       </div>
 
-      {/* Counter */}
-      <div style={{ padding: '16px 48px 0' }}>
+      {/* Counter — indicador sutil de refresh junto al conteo */}
+      <div style={{ padding: '16px 48px 0', display: 'flex', alignItems: 'center', gap: '12px' }}>
         <span className="counter">
-          {loading ? '...' : `${String(filteredModels.length).padStart(2, '0')} MODELOS`}
+          {initialLoading ? '...' : `${String(filteredModels.length).padStart(2, '0')} MODELOS`}
         </span>
+        {refreshing && (
+          <span className="gallery-refreshing-indicator">actualizando…</span>
+        )}
       </div>
 
-      {/* Grid */}
+      {/* Grid — solo se desmonta en initialLoading, nunca en refreshing */}
       <div className="gallery-grid">
-        {loading ? (
+        {initialLoading ? (
           <div className="gallery-loading">Cargando modelos...</div>
         ) : filteredModels.length === 0 ? (
           <div className="gallery-empty">
