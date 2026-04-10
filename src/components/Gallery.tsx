@@ -112,9 +112,6 @@ export default function Gallery() {
 
     const init = async () => {
       try {
-        // Esperar que el token refresh de Supabase v2 complete antes
-        // de lanzar cualquier query — sin esto las queries quedan en
-        // cola indefinidamente cuando hay sesión activa
         const { data: { session } } = await getSessionSafe();
         if (!isMounted) return;
 
@@ -127,11 +124,9 @@ export default function Gallery() {
           if (isMounted) { setProfile(p); setUserLikes(likes); }
         }
 
-        // Auth resuelto — primera carga con spinner grande
         await loadModels(true);
       } catch (err) {
-        console.error('Error en init:', err);
-        // Garantizar que el spinner no quede infinito si getSession() falla
+        console.error('[Gallery] Error en init:', err);
         if (isMounted) setInitialLoading(false);
       }
     };

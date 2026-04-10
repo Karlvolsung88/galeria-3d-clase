@@ -17,6 +17,9 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **Modelos 3D y gráficos SVG no renderizan al navegar entre páginas** — Astro 6 tiene `prefetch` habilitado por defecto, que usa la Speculation Rules API de Chrome para pre-renderizar páginas al hacer hover. WebGL (model-viewer) y custom elements no se inicializan correctamente en contextos pre-renderizados. Fix: `prefetch: false` en `astro.config.mjs`. Hard reload funcionaba porque bypassa el pre-render; navegación normal no porque servía la página pre-renderizada rota.
+  - Archivos: `astro.config.mjs`
+
 - **Galería y Estudiantes no cargan en Edge tras primer reload** — Edge Enhanced Security Mode bloquea silenciosamente el refresh del token de Supabase v2, dejando `getSession()` colgada indefinidamente. Fix: `getSessionSafe()` en `supabase.ts` — wrapper con timeout de 5s que trata la sesión como null si no resuelve, garantizando que las queries públicas siempre se ejecuten.
   - Archivos: `supabase.ts`, `Gallery.tsx`, `EstudiantesPage.tsx`
 
