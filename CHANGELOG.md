@@ -7,6 +7,14 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Corregido
+
+- **Blancos y parpadeos al editar/subir/borrar modelos** — `loadModels()` hacía `setLoading(true)` en cada operación CRUD, desmontando todos los `<model-viewer>` y destruyendo sus contextos WebGL. Fix: separar `initialLoading` (primera carga, puede desmontar grid) de `refreshing` (actualizaciones post-CRUD, grid permanece montado). Los model-viewer nunca se desmontan en operaciones normales.
+- **Race condition en llamadas concurrentes a loadModels** — Si se llamaba dos veces seguido, la respuesta más lenta podía sobreescribir la más reciente. Fix: `loadVersionRef` cancela respuestas stale.
+- **Loading infinito si getSession() falla** — `init()` no tenía try/catch envolvente; si `getSession()` lanzaba excepción, `setInitialLoading(false)` nunca corría. Fix: try/catch con fallback a `setInitialLoading(false)`.
+- **Indicador de refresh sutil** — Al actualizar datos post-CRUD aparece "actualizando…" junto al contador de modelos (sin reemplazar el grid).
+  - Archivos: `Gallery.tsx`, `global.css`
+
 ### Agregado
 
 - **Contador de comentarios en ModelCard** — Icono de burbuja de chat con conteo de comentarios junto al corazón de likes, estilo Instagram. Solo informativo (no clickeable). Nuevas funciones: `fetchCommentCounts()` en `supabase.ts`; nuevo prop `commentCount` en `ModelCard`.
