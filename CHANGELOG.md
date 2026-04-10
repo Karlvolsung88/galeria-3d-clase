@@ -7,6 +7,14 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Agregado
+
+- **Reordenamiento drag-and-drop de tarjetas (admin)** — El administrador puede cambiar el orden de las tarjetas de modelos arrastrándolas. Botón "↕ Reordenar" en la barra de filtros activa el modo; disponible solo en vista "Todos". El orden se persiste en Supabase con un campo `sort_order INTEGER`. Cambio de orden usa optimistic update + upsert en background con indicador "guardando orden…" / "✓ guardado".
+  - Librería: `@dnd-kit/core` + `@dnd-kit/sortable` (única opción compatible con React 19)
+  - Handle: icono 6 puntos top-right de cada tarjeta, visible solo en modo reordenar
+  - Archivos: `supabase.ts` (interfaz `ModelRow.sort_order`, `updateModelOrder()`), `SortableModelCard.tsx` (nuevo), `Gallery.tsx`, `global.css`
+  - SQL migration requerida: `ALTER TABLE models ADD COLUMN sort_order INTEGER DEFAULT 2147483647; UPDATE models SET sort_order = (ROW_NUMBER() OVER (ORDER BY created_at DESC)) * 1000;`
+
 ### Corregido
 
 - **Galería y Estudiantes no cargan en Edge tras primer reload** — Edge Enhanced Security Mode bloquea silenciosamente el refresh del token de Supabase v2, dejando `getSession()` colgada indefinidamente. Fix: `getSessionSafe()` en `supabase.ts` — wrapper con timeout de 5s que trata la sesión como null si no resuelve, garantizando que las queries públicas siempre se ejecuten.

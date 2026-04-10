@@ -31,6 +31,7 @@ export interface ModelRow {
   user_id: string | null;
   created_at: string;
   updated_at: string;
+  sort_order?: number;
 }
 
 export interface Profile {
@@ -255,6 +256,22 @@ export async function updateStudentLinks(
   }
   return true;
 }
+
+// --- Model ordering ---
+
+export async function updateModelOrder(updates: { id: string; sort_order: number }[]): Promise<boolean> {
+  const { error } = await supabase
+    .from('models')
+    .upsert(updates, { onConflict: 'id' });
+
+  if (error) {
+    console.error('Error updating model order:', error);
+    return false;
+  }
+  return true;
+}
+
+// --- Skills ---
 
 export async function upsertStudentSkills(
   userId: string,

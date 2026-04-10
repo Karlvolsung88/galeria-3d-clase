@@ -1,6 +1,10 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { supabase, getSessionSafe, getUserProfile, fetchLikeCounts, fetchCommentCounts, fetchUserLikes, toggleLike } from '../lib/supabase';
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { supabase, getSessionSafe, getUserProfile, fetchLikeCounts, fetchCommentCounts, fetchUserLikes, toggleLike, updateModelOrder } from '../lib/supabase';
 import type { ModelRow, Profile } from '../lib/supabase';
+import SortableModelCard from './SortableModelCard';
 import ModelCard from './ModelCard';
 import ModelModal from './ModelModal';
 import UploadForm from './UploadForm';
@@ -32,6 +36,8 @@ export default function Gallery() {
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [userLikes, setUserLikes] = useState<Set<string>>(new Set());
+  const [reorderMode, setReorderMode] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const modalCounter = useRef(0);
   // Versión para cancelar race conditions — si una llamada stale resuelve tarde,
   // compara su versión con la actual y descarta el setState si no coincide
@@ -39,6 +45,11 @@ export default function Gallery() {
 
   const isLoggedIn = !!userId;
   const isAdmin = profile?.role === 'admin';
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+  );
 
   // isInitial=true → primera carga (muestra spinner grande, puede desmontar grid)
   // isInitial=false → refresh post-CRUD (grid permanece montado, indicador sutil)
@@ -53,7 +64,7 @@ export default function Gallery() {
 
     try {
       const [modelsRes, counts, commentCountsData] = await Promise.all([
-        supabase.from('models').select('*').order('created_at', { ascending: false }),
+        supabase.from('models').select('*').order('sort_order', { ascending: true }),
         fetchLikeCounts(),
         fetchCommentCounts(),
       ]);
@@ -70,6 +81,24 @@ export default function Gallery() {
         setRefreshing(false);
       }
     }
+  }, []);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setSaveStatus('saving');
+    setModels((prev) => {
+      const oldIndex = prev.findIndex((m) => m.id === active.id);
+      const newIndex = prev.findIndex((m) => m.id === over.id);
+      const reordered = arrayMove(prev, oldIndex, newIndex);
+      const updates = reordered.map((m, i) => ({ id: m.id, sort_order: (i + 1) * 1000 }));
+      updateModelOrder(updates).then((ok) => {
+        setSaveStatus(ok ? 'saved' : 'idle');
+        if (ok) setTimeout(() => setSaveStatus('idle'), 2000);
+      });
+      return reordered;
+    });
   }, []);
 
   useEffect(() => {
@@ -191,6 +220,15 @@ export default function Gallery() {
         ))}
 
         <div className="filters-right">
+          {isAdmin && (
+            <button
+              className={`filter-btn reorder-btn ${reorderMode ? 'active' : ''}`}
+              onClick={() => setReorderMode((r) => !r)}
+              title={activeFilter !== 'all' ? 'Cambia a "Todos" para reordenar' : ''}
+            >
+              {reorderMode ? '✓ Fin reordenar' : '↕ Reordenar'}
+            </button>
+          )}
           {isLoggedIn && (
             <button
               className="filter-btn upload-btn"
@@ -210,39 +248,70 @@ export default function Gallery() {
         {refreshing && (
           <span className="gallery-refreshing-indicator">actualizando…</span>
         )}
+        {saveStatus === 'saving' && (
+          <span className="gallery-refreshing-indicator">guardando orden…</span>
+        )}
+        {saveStatus === 'saved' && (
+          <span className="gallery-save-indicator">✓ guardado</span>
+        )}
       </div>
 
       {/* Grid — solo se desmonta en initialLoading, nunca en refreshing */}
-      <div className="gallery-grid">
-        {initialLoading ? (
-          <div className="gallery-loading">Cargando modelos...</div>
-        ) : filteredModels.length === 0 ? (
-          <div className="gallery-empty">
-            {isLoggedIn
-              ? 'No hay modelos. Usa "+ Subir Modelo" para agregar el primero.'
-              : 'No hay modelos en esta categoría.'}
-          </div>
-        ) : (
-          filteredModels.map((model) => (
-            <ModelCard
-              key={model.id}
-              title={model.title}
-              student={model.student}
-              category={model.category}
-              tags={model.tags}
-              modelUrl={model.file_url}
-              canEdit={canEdit(model)}
-              likeCount={likeCounts[model.id] || 0}
-              commentCount={commentCounts[model.id] || 0}
-              isLiked={userLikes.has(model.id)}
-              onLike={() => handleToggleLike(model.id)}
-              onClick={() => handleOpenModal(model)}
-              onEdit={() => setEditingModel(model)}
-              onDelete={() => setDeleteConfirm(model)}
-            />
-          ))
-        )}
-      </div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <div className="gallery-grid">
+          {initialLoading ? (
+            <div className="gallery-loading">Cargando modelos...</div>
+          ) : filteredModels.length === 0 ? (
+            <div className="gallery-empty">
+              {isLoggedIn
+                ? 'No hay modelos. Usa "+ Subir Modelo" para agregar el primero.'
+                : 'No hay modelos en esta categoría.'}
+            </div>
+          ) : reorderMode && activeFilter === 'all' ? (
+            <SortableContext items={models.map((m) => m.id)} strategy={rectSortingStrategy}>
+              {models.map((model) => (
+                <SortableModelCard
+                  key={model.id}
+                  id={model.id}
+                  reorderMode={true}
+                  title={model.title}
+                  student={model.student}
+                  category={model.category}
+                  tags={model.tags}
+                  modelUrl={model.file_url}
+                  canEdit={canEdit(model)}
+                  likeCount={likeCounts[model.id] || 0}
+                  commentCount={commentCounts[model.id] || 0}
+                  isLiked={userLikes.has(model.id)}
+                  onLike={() => handleToggleLike(model.id)}
+                  onClick={() => handleOpenModal(model)}
+                  onEdit={() => setEditingModel(model)}
+                  onDelete={() => setDeleteConfirm(model)}
+                />
+              ))}
+            </SortableContext>
+          ) : (
+            filteredModels.map((model) => (
+              <ModelCard
+                key={model.id}
+                title={model.title}
+                student={model.student}
+                category={model.category}
+                tags={model.tags}
+                modelUrl={model.file_url}
+                canEdit={canEdit(model)}
+                likeCount={likeCounts[model.id] || 0}
+                commentCount={commentCounts[model.id] || 0}
+                isLiked={userLikes.has(model.id)}
+                onLike={() => handleToggleLike(model.id)}
+                onClick={() => handleOpenModal(model)}
+                onEdit={() => setEditingModel(model)}
+                onDelete={() => setDeleteConfirm(model)}
+              />
+            ))
+          )}
+        </div>
+      </DndContext>
 
       {/* Modal viewer */}
       {selectedModel && (
