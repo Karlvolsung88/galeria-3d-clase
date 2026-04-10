@@ -63,14 +63,20 @@ export default function Gallery() {
     }
 
     try {
+      let modelsQuery = supabase.from('models').select('*').order('sort_order', { ascending: true });
       const [modelsRes, counts, commentCountsData] = await Promise.all([
-        supabase.from('models').select('*').order('sort_order', { ascending: true }),
+        modelsQuery,
         fetchLikeCounts(),
         fetchCommentCounts(),
       ]);
+      // Fallback: si sort_order falla (columna no cacheada por PostgREST), usar created_at
+      let finalModels = modelsRes;
+      if (modelsRes.error) {
+        finalModels = await supabase.from('models').select('*').order('created_at', { ascending: false });
+      }
       // Descartar si una llamada más reciente ya tomó el control
       if (loadVersionRef.current !== version) return;
-      if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
+      if (!finalModels.error && finalModels.data) setModels(finalModels.data);
       setLikeCounts(counts);
       setCommentCounts(commentCountsData);
     } catch (err) {
