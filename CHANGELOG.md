@@ -9,6 +9,9 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **Galería y Estudiantes no cargan en Edge tras primer reload** — Edge Enhanced Security Mode bloquea silenciosamente el refresh del token de Supabase v2, dejando `getSession()` colgada indefinidamente. Fix: `getSessionSafe()` en `supabase.ts` — wrapper con timeout de 5s que trata la sesión como null si no resuelve, garantizando que las queries públicas siempre se ejecuten.
+  - Archivos: `supabase.ts`, `Gallery.tsx`, `EstudiantesPage.tsx`
+
 - **Blancos y parpadeos al editar/subir/borrar modelos** — `loadModels()` hacía `setLoading(true)` en cada operación CRUD, desmontando todos los `<model-viewer>` y destruyendo sus contextos WebGL. Fix: separar `initialLoading` (primera carga, puede desmontar grid) de `refreshing` (actualizaciones post-CRUD, grid permanece montado). Los model-viewer nunca se desmontan en operaciones normales.
 - **Race condition en llamadas concurrentes a loadModels** — Si se llamaba dos veces seguido, la respuesta más lenta podía sobreescribir la más reciente. Fix: `loadVersionRef` cancela respuestas stale.
 - **Loading infinito si getSession() falla** — `init()` no tenía try/catch envolvente; si `getSession()` lanzaba excepción, `setInitialLoading(false)` nunca corría. Fix: try/catch con fallback a `setInitialLoading(false)`.

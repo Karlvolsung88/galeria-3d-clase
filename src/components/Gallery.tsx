@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { supabase, getUserProfile, fetchLikeCounts, fetchCommentCounts, fetchUserLikes, toggleLike } from '../lib/supabase';
+import { supabase, getSessionSafe, getUserProfile, fetchLikeCounts, fetchCommentCounts, fetchUserLikes, toggleLike } from '../lib/supabase';
 import type { ModelRow, Profile } from '../lib/supabase';
 import ModelCard from './ModelCard';
 import ModelModal from './ModelModal';
@@ -80,7 +80,7 @@ export default function Gallery() {
         // Esperar que el token refresh de Supabase v2 complete antes
         // de lanzar cualquier query — sin esto las queries quedan en
         // cola indefinidamente cuando hay sesión activa
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await getSessionSafe();
         if (!isMounted) return;
 
         if (session) {
@@ -103,7 +103,7 @@ export default function Gallery() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
       if (!isMounted) return;
-      supabase.auth.getSession().then(({ data: { session } }) => {
+      getSessionSafe().then(({ data: { session } }) => {
         if (!isMounted) return;
         if (session) {
           setUserId(session.user.id);
