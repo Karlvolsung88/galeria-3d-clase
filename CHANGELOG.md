@@ -14,6 +14,9 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **Galería no se refresca al borrar/subir/editar modelo** — `loadModels()` se llamaba en `handleDelete`, `UploadForm.onSuccess` y `EditModelForm.onSave` pero la función nunca estaba definida, causando `ReferenceError`. Fix: extraer la lógica de fetch (modelos + likes + comments) del `init()` a una función `loadModels()` reutilizable.
+  - Archivos: `Gallery.tsx`
+
 - **Comentarios con 400 Bad Request** — `.select('*, profiles(full_name, role)')` en PostgREST falla si la FK `comments_user_id_fkey` apunta a `auth.users` en lugar de `public.profiles`. Fix: reemplazado join PostgREST por dos queries separadas — `fetchComments` hace `select('*')` y luego fetch de profiles por `user_id[]`; `addComment` hace lo mismo post-insert. La interfaz `CommentRow` no cambia.
   - Archivos: `supabase.ts`
 
