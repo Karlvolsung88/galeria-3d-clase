@@ -121,6 +121,12 @@ Las FKs de `comments.user_id` y `likes.user_id` apuntan a `auth.users`, no a `pu
 - Upload de modelos GLB (solo admin/student)
 - RLS policies en todas las tablas
 
+### Cuándo convocar a Felipe Vargas Montoya (/browser)
+- Cualquier comportamiento diferente entre Chrome y Edge/Safari/Firefox
+- Modelos 3D en blanco o que no cargan en algún navegador
+- **Primer diagnóstico siempre: mirar el Network tab** — si no hay requests a Supabase, el problema es JS/auth, no WebGL
+- Caso resuelto (2026-04-10): Edge bloqueaba `getSession()` silenciosamente → `getSessionSafe()` con timeout de 5s
+
 ### Bugs conocidos resueltos (no reabrir)
 - Race condition auth → patrón `await getSession()` en `init()`
 - Modal login descentrado → `createPortal`
