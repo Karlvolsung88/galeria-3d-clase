@@ -34,19 +34,22 @@ export default function Gallery() {
   const isLoggedIn = !!userId;
   const isAdmin = profile?.role === 'admin';
 
-  // Check auth + load profile
-  const loadProfile = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      setUserId(session.user.id);
-      const p = await getUserProfile();
-      setProfile(p);
-      const likes = await fetchUserLikes(session.user.id);
-      setUserLikes(likes);
-    } else {
-      setUserId(null);
-      setProfile(null);
-      setUserLikes(new Set());
+  // Función reutilizable para cargar modelos, likes y comments
+  const loadModels = async () => {
+    setLoading(true);
+    try {
+      const [modelsRes, counts, commentCountsData] = await Promise.all([
+        supabase.from('models').select('*').order('created_at', { ascending: false }),
+        fetchLikeCounts(),
+        fetchCommentCounts(),
+      ]);
+      if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
+      setLikeCounts(counts);
+      setCommentCounts(commentCountsData);
+    } catch (err) {
+      console.error('Error loading models:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -70,22 +73,7 @@ export default function Gallery() {
       }
 
       // Auth resuelto — ahora las queries se ejecutan
-      setLoading(true);
-      try {
-        const [modelsRes, counts, commentCountsData] = await Promise.all([
-          supabase.from('models').select('*').order('created_at', { ascending: false }),
-          fetchLikeCounts(),
-          fetchCommentCounts(),
-        ]);
-        if (!isMounted) return;
-        if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
-        setLikeCounts(counts);
-        setCommentCounts(commentCountsData);
-      } catch (err) {
-        console.error('Error loading models:', err);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
+      await loadModels();
     };
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
