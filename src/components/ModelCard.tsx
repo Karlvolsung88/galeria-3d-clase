@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import ModelScene from './ModelScene';
 
@@ -49,6 +49,19 @@ export default function ModelCard({
 }: ModelCardProps) {
   const [animating, setAnimating] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setVisible(entry.isIntersecting),
+      { rootMargin: '200px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const handleLike = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -59,24 +72,32 @@ export default function ModelCard({
 
   return (
     <div
+      ref={cardRef}
       className="card"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <div className="card-viewer" onClick={onClick}>
-        <Canvas
-          camera={{ position: [2.5, 1.8, 2.5], fov: 40 }}
-          gl={{ antialias: true }}
-          frameloop={hovered ? 'always' : 'demand'}
-        >
-          <ModelScene
-            url={modelUrl}
-            autoRotate={hovered}
-            enableZoom={false}
-            enablePan={false}
-            enableRotate={false}
-          />
-        </Canvas>
+        {visible ? (
+          <Canvas
+            camera={{ position: [2.5, 1.8, 2.5], fov: 40 }}
+            gl={{ antialias: false, powerPreference: 'low-power' }}
+            dpr={1}
+            frameloop={hovered ? 'always' : 'demand'}
+          >
+            <ModelScene
+              url={modelUrl}
+              autoRotate={hovered}
+              enableZoom={false}
+              enablePan={false}
+              enableRotate={false}
+            />
+          </Canvas>
+        ) : (
+          <div style={{ width: '100%', height: '100%', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ color: '#555', fontSize: '13px' }}>...</span>
+          </div>
+        )}
         <div className="card-overlay-hover">
           <button className="view-btn">Ver en detalle</button>
         </div>

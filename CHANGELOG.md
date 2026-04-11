@@ -7,6 +7,19 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Corregido
+
+- **Modelos con Draco compression no cargaban** — Los GLB exportados con `KHR_draco_mesh_compression` (3 modelos PBR de Substance Painter) se quedaban en "Cargando 3D..." indefinidamente. Fix: configurar `useGLTF.setDecoderPath()` con el CDN de Google Draco decoders.
+  - Archivos: `Model3D.tsx`
+
+### Mejorado
+
+- **Lazy loading de Canvas WebGL** — Las tarjetas solo crean su Canvas 3D cuando son visibles en el viewport (IntersectionObserver con 200px de margen). Reduce contextos WebGL activos y consumo de GPU.
+  - Archivos: `ModelCard.tsx`
+
+- **Deploy a Hostinger** — Configuración para dominio raíz: `base: '/'` en Vite, BrowserRouter sin basename, `.htaccess` para SPA routing en Apache.
+  - Archivos: `vite.config.ts`, `main.tsx`, `public/.htaccess`
+
 ### Agregado
 
 - **Migración completa Astro 6 → Vite + React + React Three Fiber** — Reemplaza la arquitectura MPA de Astro por una SPA con Vite + React Router, resolviendo definitivamente los bugs de renderización WebGL/SVG al navegar entre páginas (bfcache, prefetch, Speculation Rules). React Three Fiber reemplaza model-viewer para el renderizado 3D.
