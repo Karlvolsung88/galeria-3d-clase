@@ -2204,6 +2204,49 @@ footer p {
   flex-direction: column;
 }
 
+/* ==================== ADMIN ACTIONS ==================== */
+.student-admin-actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-top: none;
+}
+
+.student-admin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.student-admin-btn--clear {
+  color: #a8b4c4;
+}
+
+.student-admin-btn--clear:hover {
+  color: #fbbf24;
+  border-color: #fbbf2460;
+}
+
+.student-admin-btn--delete {
+  color: #a8b4c4;
+}
+
+.student-admin-btn--delete:hover {
+  color: #ff4d00;
+  border-color: #ff4d0060;
+}
+
 /* ==================== BIO CARD ==================== */
 .student-bio-card {
   background: var(--surface2);

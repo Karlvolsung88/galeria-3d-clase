@@ -89,7 +89,7 @@ export default function EstudiantesPage() {
       ) : (
         <div className="estudiantes-grid">
           {students.map((student) => (
-            <StudentCard key={student.id} student={student} currentUserId={profile?.id} />
+            <StudentCard key={student.id} student={student} currentUserId={profile?.id} isAdmin={isAdmin} onDeleted={handleSaved} />
           ))}
         </div>
       )}

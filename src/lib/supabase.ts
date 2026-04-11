@@ -298,3 +298,33 @@ export async function upsertStudentSkills(
 
   return true;
 }
+
+export async function deleteStudentSkills(userId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('student_skills')
+    .delete()
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error deleting student skills:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function deleteStudentProfile(userId: string): Promise<boolean> {
+  await supabase.from('student_skills').delete().eq('user_id', userId);
+  await supabase.from('likes').delete().eq('user_id', userId);
+  await supabase.from('comments').delete().eq('user_id', userId);
+
+  const { error } = await supabase
+    .from('profiles')
+    .delete()
+    .eq('id', userId);
+
+  if (error) {
+    console.error('Error deleting student profile:', error);
+    return false;
+  }
+  return true;
+}
