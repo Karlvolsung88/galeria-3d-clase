@@ -260,12 +260,15 @@ export async function updateStudentLinks(
 // --- Model ordering ---
 
 export async function updateModelOrder(updates: { id: string; sort_order: number }[]): Promise<boolean> {
-  const { error } = await supabase
-    .from('models')
-    .upsert(updates, { onConflict: 'id' });
+  const results = await Promise.all(
+    updates.map(({ id, sort_order }) =>
+      supabase.from('models').update({ sort_order }).eq('id', id)
+    )
+  );
 
-  if (error) {
-    console.error('Error updating model order:', error);
+  const failed = results.find((r) => r.error);
+  if (failed?.error) {
+    console.error('Error updating model order:', failed.error);
     return false;
   }
   return true;

@@ -9,6 +9,9 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **Reordenamiento drag-and-drop no guardaba** — `upsert` disparaba la política INSERT de RLS (error 42501) porque PostgreSQL evalúa INSERT antes de resolver ON CONFLICT. Fix: cambiar a `update` individuales con `Promise.all`, que solo dispara la política UPDATE permitida para admin.
+  - Archivos: `src/lib/supabase.ts`
+
 - **Modelos con Draco compression no cargaban** — Los GLB exportados con `KHR_draco_mesh_compression` (3 modelos PBR de Substance Painter) se quedaban en "Cargando 3D..." indefinidamente. Fix: configurar `useGLTF.setDecoderPath()` con el CDN de Google Draco decoders.
   - Archivos: `Model3D.tsx`
 
