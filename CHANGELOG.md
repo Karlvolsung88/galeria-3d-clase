@@ -7,6 +7,11 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Mejorado
+
+- **Canvas WebGL compartido (View de drei)** — Migra de 13 Canvas individuales (13 contextos WebGL) a un único Canvas global con `View` de @react-three/drei. Cada tarjeta usa scissor testing dentro del mismo contexto. Elimina los errores `THREE.WebGLRenderer: Context Lost` (224 → 0), comparte environment maps y cache de texturas, y habilita compatibilidad con Safari iOS (límite de 4 contextos).
+  - Archivos: `SceneCanvas.tsx` (nuevo), `ModelCard.tsx`, `ModelModal.tsx`, `UploadForm.tsx`, `EditModelForm.tsx`, `App.tsx`
+
 ### Corregido
 
 - **Modelos con Draco compression no cargaban** — Los GLB exportados con `KHR_draco_mesh_compression` (3 modelos PBR de Substance Painter) se quedaban en "Cargando 3D..." indefinidamente. Fix: configurar `useGLTF.setDecoderPath()` con el CDN de Google Draco decoders.

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { View } from '@react-three/drei';
 import ModelScene from './ModelScene';
 import { supabase } from '../lib/supabase';
 import type { ModelRow } from '../lib/supabase';
@@ -94,7 +94,7 @@ export default function EditModelForm({ model, onSave, onClose }: EditModelFormP
         <form onSubmit={handleSubmit} className="upload-body">
           {/* Preview */}
           <div className="upload-dropzone has-file" style={{ cursor: 'default' }}>
-            <Canvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true }} style={{ width: '100%', height: '100%' }}>
+            <View style={{ width: '100%', height: '100%' }}>
               <ModelScene
                 url={model.file_url}
                 autoRotate={true}
@@ -103,7 +103,7 @@ export default function EditModelForm({ model, onSave, onClose }: EditModelFormP
                 enableRotate={true}
                 showFloor={true}
               />
-            </Canvas>
+            </View>
             <div className="upload-file-name">{model.file_name}</div>
           </div>
 

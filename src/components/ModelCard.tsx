@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { View } from '@react-three/drei';
 import ModelScene from './ModelScene';
 
 interface ModelCardProps {
@@ -79,12 +79,7 @@ export default function ModelCard({
     >
       <div className="card-viewer" onClick={onClick}>
         {visible ? (
-          <Canvas
-            camera={{ position: [2.5, 1.8, 2.5], fov: 40 }}
-            gl={{ antialias: false, powerPreference: 'low-power' }}
-            dpr={1}
-            frameloop={hovered ? 'always' : 'demand'}
-          >
+          <View style={{ width: '100%', height: '100%' }}>
             <ModelScene
               url={modelUrl}
               autoRotate={hovered}
@@ -92,7 +87,7 @@ export default function ModelCard({
               enablePan={false}
               enableRotate={false}
             />
-          </Canvas>
+          </View>
         ) : (
           <div style={{ width: '100%', height: '100%', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ color: '#555', fontSize: '13px' }}>...</span>
