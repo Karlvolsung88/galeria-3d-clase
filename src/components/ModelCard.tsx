@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Canvas } from '@react-three/fiber';
+import ModelScene from './ModelScene';
 
 interface ModelCardProps {
   title: string;
@@ -46,6 +48,7 @@ export default function ModelCard({
   onDelete,
 }: ModelCardProps) {
   const [animating, setAnimating] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   const handleLike = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -53,30 +56,27 @@ export default function ModelCard({
     setTimeout(() => setAnimating(false), 400);
     onLike();
   };
+
   return (
-    <div className="card">
+    <div
+      className="card"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <div className="card-viewer" onClick={onClick}>
-        {/* @ts-ignore */}
-        <model-viewer
-          src={modelUrl}
-          loading="lazy"
-          reveal="auto"
-          auto-rotate
-          interaction-prompt="none"
-          shadow-intensity="0.8"
-          environment-image="neutral"
-          exposure="1.1"
-          camera-orbit="45deg 65deg auto"
-          camera-target="auto auto auto"
-          disable-zoom
-          style={{
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'transparent',
-            '--poster-color': 'transparent',
-            pointerEvents: 'none',
-          } as React.CSSProperties}
-        />
+        <Canvas
+          camera={{ position: [2.5, 1.8, 2.5], fov: 40 }}
+          gl={{ antialias: true }}
+          frameloop={hovered ? 'always' : 'demand'}
+        >
+          <ModelScene
+            url={modelUrl}
+            autoRotate={hovered}
+            enableZoom={false}
+            enablePan={false}
+            enableRotate={false}
+          />
+        </Canvas>
         <div className="card-overlay-hover">
           <button className="view-btn">Ver en detalle</button>
         </div>
@@ -115,7 +115,6 @@ export default function ModelCard({
         </div>
       </div>
 
-      {/* Admin actions */}
       {canEdit && (
         <div className="card-admin-actions">
           <button

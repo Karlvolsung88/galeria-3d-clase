@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { Canvas } from '@react-three/fiber';
+import ModelScene from './ModelScene';
 import { supabase } from '../lib/supabase';
 
 interface UploadFormProps {
@@ -143,22 +145,16 @@ export default function UploadForm({ onSuccess, onClose }: UploadFormProps) {
           >
             {previewUrl ? (
               <>
-                {/* @ts-ignore */}
-                <model-viewer
-                  src={previewUrl}
-                  auto-rotate
-                  camera-controls
-                  shadow-intensity="0.8"
-                  environment-image="neutral"
-                  exposure="1.1"
-                  interaction-prompt="none"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    backgroundColor: 'transparent',
-                    '--poster-color': 'transparent',
-                  } as React.CSSProperties}
-                />
+                <Canvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true }} style={{ width: '100%', height: '100%' }}>
+                  <ModelScene
+                    url={previewUrl}
+                    autoRotate={true}
+                    enableZoom={true}
+                    enablePan={false}
+                    enableRotate={true}
+                    showFloor={true}
+                  />
+                </Canvas>
                 <div className="upload-file-name">
                   {file?.name} ({((file?.size || 0) / 1024 / 1024).toFixed(1)} MB)
                 </div>
