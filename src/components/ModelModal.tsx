@@ -1,4 +1,6 @@
 import { useEffect, useCallback, useState } from 'react';
+import { Canvas } from '@react-three/fiber';
+import ModelScene from './ModelScene';
 import { fetchComments, addComment, deleteComment, type CommentRow } from '../lib/supabase';
 
 interface ModelModalProps {
@@ -108,28 +110,16 @@ export default function ModelModal({
       <div className="modal">
         <div className="modal-viewer-wrap">
           <button className="modal-close" onClick={onClose} aria-label="Cerrar modal">✕</button>
-          {/* @ts-ignore */}
-          <model-viewer
-            src={modelUrl}
-            camera-controls
-            touch-action="pan-y"
-            shadow-intensity="1.2"
-            shadow-softness="0.8"
-            environment-image="neutral"
-            exposure="1.1"
-            camera-orbit="45deg 65deg auto"
-            min-camera-orbit="auto auto auto"
-            max-camera-orbit="Infinity 160deg auto"
-            interpolation-decay="100"
-            style={{
-              width: '100%',
-              height: '100%',
-              backgroundColor: 'transparent',
-              '--poster-color': 'transparent',
-              '--progress-bar-color': '#00e5ff',
-              '--progress-bar-height': '3px',
-            } as React.CSSProperties}
-          />
+          <Canvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true }}>
+            <ModelScene
+              url={modelUrl}
+              autoRotate={false}
+              enableZoom={true}
+              enablePan={true}
+              enableRotate={true}
+              showFloor={true}
+            />
+          </Canvas>
           <div className="controls-hint">
             <span>LMB: Orbitar</span>
             <span>RMB: Paneo</span>

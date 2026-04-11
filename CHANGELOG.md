@@ -9,6 +9,22 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Agregado
 
+- **Migración completa Astro 6 → Vite + React + React Three Fiber** — Reemplaza la arquitectura MPA de Astro por una SPA con Vite + React Router, resolviendo definitivamente los bugs de renderización WebGL/SVG al navegar entre páginas (bfcache, prefetch, Speculation Rules). React Three Fiber reemplaza model-viewer para el renderizado 3D.
+  - **Nuevo stack**: Vite 6 + React 19 + React Router 7 + @react-three/fiber + @react-three/drei + Three.js
+  - **Componentes R3F**: `Model3D.tsx` (carga GLB, centrado automático, fix color space), `ModelScene.tsx` (escena studio con environment IBL, suelo mate, contact shadows, fog)
+  - **SPA routing**: `App.tsx` con React Router, `Layout.tsx` con NavLink, `404.html` para GitHub Pages
+  - **Optimización GPU**: `frameloop="demand"` en tarjetas (0 fps cuando no hay hover), auto-rotate solo en hover
+  - **Iluminación studio**: Environment preset studio (0.4), ambient (0.15), dual directional lights, suelo mate #222 con ContactShadows
+  - **Archivos nuevos**: `vite.config.ts`, `src/main.tsx`, `src/App.tsx`, `src/layouts/Layout.tsx`, `src/components/Model3D.tsx`, `src/components/ModelScene.tsx`, `src/pages/GaleriaPage.tsx`, `public/404.html`
+  - **Archivos actualizados**: `ModelCard.tsx`, `ModelModal.tsx`, `UploadForm.tsx`, `EditModelForm.tsx`, `UserMenu.tsx`, `index.html`, `tsconfig.json`, `package.json`
+
+### Eliminado
+
+- **Archivos Astro**: `index.astro`, `estudiantes.astro`, `perfil.astro`, `Layout.astro`, `astro.config.mjs` — ya no necesarios tras migración a SPA
+- **Dependencias Astro**: `astro`, `@astrojs/react`, `@astrojs/sitemap` removidos de package.json
+
+### Agregado
+
 - **Reordenamiento drag-and-drop de tarjetas (admin)** — El administrador puede cambiar el orden de las tarjetas de modelos arrastrándolas. Botón "↕ Reordenar" en la barra de filtros activa el modo; disponible solo en vista "Todos". El orden se persiste en Supabase con un campo `sort_order INTEGER`. Cambio de orden usa optimistic update + upsert en background con indicador "guardando orden…" / "✓ guardado".
   - Librería: `@dnd-kit/core` + `@dnd-kit/sortable` (única opción compatible con React 19)
   - Handle: icono 6 puntos top-right de cada tarjeta, visible solo en modo reordenar

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase, getUserProfile, type Profile } from '../lib/supabase';
 import AuthModal from './AuthModal';
 
@@ -33,10 +34,12 @@ export default function UserMenu() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const navigate = useNavigate();
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setOpen(false);
-    window.location.href = '/galeria-3d-clase/';
+    navigate('/');
   };
 
   const initials = (name: string) => {
@@ -88,22 +91,22 @@ export default function UserMenu() {
             <span className="usermenu-dropdown-role">{profile.role === 'admin' ? 'Admin' : 'Estudiante'}</span>
           </div>
           <div className="usermenu-dropdown-divider" />
-          <a href="/galeria-3d-clase/perfil" className="usermenu-dropdown-item"
+          <Link to="/perfil" className="usermenu-dropdown-item"
             onClick={() => setOpen(false)}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
               <circle cx="12" cy="7" r="4"/>
             </svg>
             Ver Perfil
-          </a>
-          <a href="/galeria-3d-clase/perfil?edit=1" className="usermenu-dropdown-item"
+          </Link>
+          <Link to="/perfil?edit=1" className="usermenu-dropdown-item"
             onClick={() => setOpen(false)}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
             </svg>
             Editar Perfil
-          </a>
+          </Link>
           <div className="usermenu-dropdown-divider" />
           <button className="usermenu-dropdown-item usermenu-logout" onClick={handleLogout}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
