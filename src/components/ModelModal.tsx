@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useState } from 'react';
-import { View } from '@react-three/drei';
+import { Canvas } from '@react-three/fiber';
 import ModelScene from './ModelScene';
 import { fetchComments, addComment, deleteComment, type CommentRow } from '../lib/supabase';
 
@@ -110,7 +110,7 @@ export default function ModelModal({
       <div className="modal">
         <div className="modal-viewer-wrap">
           <button className="modal-close" onClick={onClose} aria-label="Cerrar modal">✕</button>
-          <View style={{ width: '100%', height: '100%' }}>
+          <Canvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true }}>
             <ModelScene
               url={modelUrl}
               autoRotate={false}
@@ -119,7 +119,7 @@ export default function ModelModal({
               enableRotate={true}
               showFloor={true}
             />
-          </View>
+          </Canvas>
           <div className="controls-hint">
             <span>LMB: Orbitar</span>
             <span>RMB: Paneo</span>

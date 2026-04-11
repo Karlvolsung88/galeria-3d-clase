@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { View } from '@react-three/drei';
+import { Canvas } from '@react-three/fiber';
 import ModelScene from './ModelScene';
 import { supabase } from '../lib/supabase';
 
@@ -145,7 +145,7 @@ export default function UploadForm({ onSuccess, onClose }: UploadFormProps) {
           >
             {previewUrl ? (
               <>
-                <View style={{ width: '100%', height: '100%' }}>
+                <Canvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true }} style={{ width: '100%', height: '100%' }}>
                   <ModelScene
                     url={previewUrl}
                     autoRotate={true}
@@ -154,7 +154,7 @@ export default function UploadForm({ onSuccess, onClose }: UploadFormProps) {
                     enableRotate={true}
                     showFloor={true}
                   />
-                </View>
+                </Canvas>
                 <div className="upload-file-name">
                   {file?.name} ({((file?.size || 0) / 1024 / 1024).toFixed(1)} MB)
                 </div>
