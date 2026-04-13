@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import HexagonChart from './HexagonChart';
-import { updateStudentLinks, type StudentWithSkills } from '../lib/supabase';
+import { updateStudentLinks, deleteStudentSkills, deleteStudentProfile, type StudentWithSkills } from '../lib/api';
 
 interface Props {
   student: StudentWithSkills;
   currentUserId?: string;
+  isAdmin?: boolean;
+  onDeleted?: () => void;
 }
 
 function Initials({ name }: { name: string }) {
@@ -17,9 +19,11 @@ function Initials({ name }: { name: string }) {
 
 type LinkSaveState = 'idle' | 'saving' | 'ok' | 'error';
 
-export default function StudentCard({ student, currentUserId }: Props) {
+export default function StudentCard({ student, currentUserId, isAdmin, onDeleted }: Props) {
   const hasSkills = student.student_skills.length > 0;
   const isOwn = currentUserId === student.id;
+  const [confirmDelete, setConfirmDelete] = useState<'skills' | 'profile' | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [editing, setEditing] = useState(false);
   const [artstation, setArtstation] = useState(student.artstation_url ?? '');
@@ -125,6 +129,77 @@ export default function StudentCard({ student, currentUserId }: Props) {
           </div>
         )}
       </div>
+
+      {isAdmin && (
+        <div className="student-admin-actions">
+          {hasSkills && (
+            <button
+              className="student-admin-btn student-admin-btn--clear"
+              onClick={() => setConfirmDelete('skills')}
+              title="Limpiar skills"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14" />
+              </svg>
+              Limpiar skills
+            </button>
+          )}
+          <button
+            className="student-admin-btn student-admin-btn--delete"
+            onClick={() => setConfirmDelete('profile')}
+            title="Eliminar estudiante"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+              <line x1="10" y1="11" x2="10" y2="17" />
+              <line x1="14" y1="11" x2="14" y2="17" />
+            </svg>
+            Eliminar estudiante
+          </button>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="modal-overlay active" onClick={(e) => { if (e.target === e.currentTarget) setConfirmDelete(null); }}>
+          <div className="upload-modal" style={{ maxWidth: '440px' }}>
+            <div className="upload-header">
+              <h2 className="upload-title">
+                {confirmDelete === 'skills' ? 'Limpiar Skills' : 'Eliminar Estudiante'}
+              </h2>
+            </div>
+            <div className="upload-body">
+              <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: '1.6' }}>
+                {confirmDelete === 'skills'
+                  ? <>¿Limpiar las habilidades de <strong style={{ color: 'var(--text)' }}>{student.full_name}</strong>? El gráfico se vaciará.</>
+                  : <>¿Eliminar a <strong style={{ color: 'var(--text)' }}>{student.full_name}</strong> completamente? Se borrarán sus skills, likes y comentarios. Esta acción no se puede deshacer.</>
+                }
+              </p>
+              <div className="upload-actions">
+                <button className="upload-cancel" onClick={() => setConfirmDelete(null)} disabled={deleting}>Cancelar</button>
+                <button
+                  className="upload-submit"
+                  style={{ background: '#ff4d00', borderColor: '#ff4d00' }}
+                  disabled={deleting}
+                  onClick={async () => {
+                    setDeleting(true);
+                    const ok = confirmDelete === 'skills'
+                      ? await deleteStudentSkills(student.id)
+                      : await deleteStudentProfile(student.id);
+                    setDeleting(false);
+                    if (ok) {
+                      setConfirmDelete(null);
+                      onDeleted?.();
+                    }
+                  }}
+                >
+                  {deleting ? 'Procesando...' : confirmDelete === 'skills' ? 'Limpiar' : 'Eliminar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

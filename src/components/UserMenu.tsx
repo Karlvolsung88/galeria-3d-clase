@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { supabase, getUserProfile, type Profile } from '../lib/supabase';
+import { initAuth, onAuthStateChange, signOut, getMe, type Profile } from '../lib/api';
 import AuthModal from './AuthModal';
 
 export default function UserMenu() {
@@ -9,20 +9,17 @@ export default function UserMenu() {
   const [showAuth, setShowAuth] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const loadProfile = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      const p = await getUserProfile();
-      setProfile(p);
-    } else {
-      setProfile(null);
-    }
-  };
-
   useEffect(() => {
-    loadProfile();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => loadProfile());
-    return () => subscription.unsubscribe();
+    initAuth().then(({ profile: p }) => setProfile(p));
+    const unsub = onAuthStateChange(async (user) => {
+      if (user) {
+        const p = await getMe();
+        setProfile(p);
+      } else {
+        setProfile(null);
+      }
+    });
+    return unsub;
   }, []);
 
   // Cerrar al hacer clic fuera
@@ -36,8 +33,8 @@ export default function UserMenu() {
 
   const navigate = useNavigate();
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    signOut();
     setOpen(false);
     navigate('/');
   };

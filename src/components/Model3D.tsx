@@ -11,6 +11,9 @@ interface Model3DProps {
  * normaliza su escala a tamaño uniforme, y corrige
  * el color space de los non-color maps (normal, roughness, metalness, AO).
  */
+// Habilitar decodificador Draco para modelos con KHR_draco_mesh_compression
+useGLTF.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+
 export default function Model3D({ url }: Model3DProps) {
   const { scene } = useGLTF(url);
 

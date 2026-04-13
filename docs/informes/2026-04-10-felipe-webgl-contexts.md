@@ -2,398 +2,274 @@
 autor: Felipe Vargas Montoya
 cargo: Especialista Browser & JavaScript
 fecha: 2026-04-10
-tema: Acumulación de contextos WebGL en recargas de galería
+tema: Diagnóstico WebGL Context Lost — estrategia de Canvas compartido
 estado: revision
 ---
 
-# Informe Técnico: Acumulación de Contextos WebGL en la Galería 3D
+# Diagnóstico: WebGL Context Lost en Galería 3D (React Three Fiber)
 
-## Resumen ejecutivo
+## 1. Problema
 
-La galería monta hasta 20+ instancias de `<model-viewer>` simultáneamente. Cada instancia
-crea un contexto WebGL propio dentro de su Shadow Root. El patrón actual en `Gallery.tsx`
-desmonta la totalidad de los `ModelCard` al llamar `setLoading(true)` (línea 39), lo que
-destruye y recrea todos los contextos WebGL en cada operación de carga. Este ciclo de
-destrucción-recreación combinado con los límites duros del navegador representa el riesgo
-técnico de mayor prioridad en la arquitectura de visualización actual.
+La galería crea un `<Canvas>` independiente por cada `ModelCard` (13 tarjetas). Cada Canvas instancia su propio `THREE.WebGLRenderer`, que requiere un contexto WebGL dedicado. Chrome limita a **16 contextos WebGL activos por pestaña**. Con 13 tarjetas visibles mas el modal (que abre otro Canvas), se roza o supera el limite, provocando `THREE.WebGLRenderer: Context Lost` en cascada.
 
----
+### Por que falla aun con IntersectionObserver
 
-## 1. Límites de contextos WebGL simultáneos por navegador
+El IntersectionObserver actual usa `rootMargin: '200px'`, lo que pre-monta tarjetas fuera del viewport. Con un grid de 3-4 columnas y scroll, facilmente 10-13 Canvas quedan montados simultaneamente. Cuando el usuario abre el modal (Canvas adicional), se llega a 14+ contextos activos. Los modelos con texturas PBR embebidas (4-16 MB) agravan el problema porque la GPU agota VRAM antes de alcanzar el limite numerico de contextos.
 
-### Chrome y Edge (motor Blink / V8)
-
-El límite forzado por el navegador es de **16 contextos WebGL activos por pestaña**
-(configurable internamente como `kMaxWebGLContexts`). A partir de la versión 107, Chrome
-aplica una política de **pérdida de contexto forzada** ("context loss") en el contexto
-más antiguo cuando se intenta crear el contexto número 17. El contexto perdido dispara el
-evento `webglcontextlost` en el canvas correspondiente. `model-viewer` captura este evento
-e intenta recuperarse, pero la recuperación no siempre es exitosa en versiones anteriores
-a la 3.x del componente.
-
-Comportamiento al superar el límite:
-- El contexto más antiguo recibe `webglcontextlost`.
-- El modelo asociado queda en negro o congela el último frame renderizado.
-- Chrome registra en consola: `WARNING: Too many active WebGL contexts. Oldest context will
-  be lost.`
-- No hay excepción JavaScript; el fallo es silencioso para el usuario.
-
-### Firefox (motor Gecko / SpiderMonkey)
-
-Firefox tiene un límite configurable vía `webgl.max-contexts` en `about:config`,
-establecido en **32 por defecto** en versiones recientes (Firefox 120+). Sin embargo,
-el límite práctico por la memoria de GPU disponible puede ser inferior. Firefox implementa
-una política distinta: en lugar de destruir contextos más viejos, **rechaza la creación del
-nuevo contexto** devolviendo `null` de `getContext('webgl')`. `model-viewer` interpreta este
-null como un entorno sin soporte WebGL y muestra el poster estático sin renderizar el modelo.
-
-Comportamiento al superar el límite:
-- El nuevo `<model-viewer>` no renderiza el modelo y queda en estado de poster/vacío.
-- Los contextos existentes se mantienen intactos.
-- El fallo es también silencioso para el usuario final.
-
-### Safari en macOS (motor WebKit)
-
-Safari macOS aplica un límite de **8 contextos WebGL simultáneos por origen** en versiones
-anteriores a Safari 16. A partir de Safari 16 (macOS Ventura), el límite sube a **16**,
-alineándose con Chrome. Safari usa una política agresiva: cuando se detecta presión de
-memoria GPU, puede destruir contextos activos sin que la página lo haya solicitado. Este
-comportamiento es especialmente visible en MacBooks con GPU integrada (Intel HD Graphics o
-Apple M1 con RAM unificada limitada).
-
-Comportamiento al superar el límite:
-- Destrucción silenciosa de contextos con posible pantalla en negro.
-- El evento `webglcontextlost` se dispara pero sin garantía de recuperación.
-- Safari 16+ en Apple Silicon tiene un comportamiento más estable por la mayor memoria
-  unificada disponible.
-
-### Safari en iOS (WKWebView)
-
-Este es el entorno más restrictivo de todos los considerados para este proyecto. iOS aplica
-un límite de **4 contextos WebGL activos por pestaña de Safari** (medido en iOS 16-17 sobre
-iPhone con 4 GB de RAM). El sistema operativo puede matar contextos adicionales sin aviso
-cuando la aplicación del navegador recibe presión de memoria del sistema. En iPads con más
-RAM (8-16 GB) el límite práctico es mayor pero sigue estando por debajo de 16.
-
-Comportamiento al superar el límite:
-- Los modelos más recientes pueden no renderizar.
-- Safari iOS puede matar toda la pestaña si la presión de memoria es extrema.
-- El atributo `loading="lazy"` cobra aquí una importancia crítica (ver sección 3).
-
-### Tabla resumen de límites
-
-| Navegador             | Límite por pestaña | Política al superar    | Recuperación |
-|-----------------------|--------------------|------------------------|--------------|
-| Chrome / Edge 107+    | 16                 | Destruye el más viejo  | Parcial      |
-| Firefox 120+          | 32 (configurable)  | Rechaza el nuevo       | No aplica    |
-| Safari 16+ macOS      | 16                 | Destruye bajo presión  | Parcial      |
-| Safari < 16 macOS     | 8                  | Destruye bajo presión  | Baja         |
-| Safari iOS 16-17      | ~4 práctico        | Destruye / mata tab    | Muy baja     |
-
----
-
-## 2. Ciclo mount/unmount y garantía de liberación de contextos
-
-### El problema concreto en Gallery.tsx
-
-En `Gallery.tsx`, `loadModels()` ejecuta `setLoading(true)` en la línea 39. Esta llamada
-provoca que el renderizado condicional en las líneas 189-216 sustituya el grid de
-`ModelCard` por el componente `<div className="gallery-loading">`. React desmonta todos
-los `ModelCard` del árbol, y con ellos todos los `<model-viewer>`.
-
-Cuando `<model-viewer>` se desmonta del DOM:
-1. Su `disconnectedCallback` (lifecycle de Web Components) se ejecuta de forma síncrona.
-2. Dentro de ese callback, `model-viewer` llama a `gl.getExtension('WEBGL_lose_context')`
-   y fuerza la pérdida del contexto, o simplemente libera la referencia al canvas.
-3. La memoria de la GPU **no se libera de forma garantizada e inmediata**. El driver de
-   gráficos y el recolector de basura del navegador deciden cuándo la memoria GPU queda
-   disponible. Este proceso puede tomar entre 100ms y varios segundos.
-
-### ¿Puede haber acumulación?
-
-Sí. El escenario de acumulación ocurre de la siguiente manera:
+### Cadena de fallo
 
 ```
-t=0ms   : loadModels() llama setLoading(true)
-t=0ms   : React desmonta los 15 model-viewer existentes
-t=0-50ms: disconnectedCallback de cada model-viewer ejecuta, libera referencias JS
-t=0-???ms: Driver GPU procesa la liberación (asíncrono, no controlable desde JS)
-t=400ms : setLoading(false) ejecuta, React monta 15 nuevos model-viewer
-t=400ms : Cada nuevo model-viewer llama getContext('webgl') — puede ocurrir ANTES
-          de que el driver haya liberado los contextos anteriores
+13 ModelCard visibles → 13 Canvas → 13 WebGLRenderer → 13 contextos WebGL
++ 1 Modal Canvas = 14 contextos
++ Chrome destruye contextos antiguos → "Context Lost" en cascada
++ Modelos PBR 4-16MB → GPU memory pressure → mas context loss
 ```
 
-Si el driver GPU no ha completado la liberación cuando los nuevos contextos se solicitan,
-el navegador puede ver hasta **30 contextos simultáneos** por un período breve. En Chrome
-y Safari esto activa la política de destrucción del contexto más antiguo.
+## 2. Causa raiz
 
-En una galería con 15 modelos, con la operación de upload/edit/delete que llama
-`loadModels()` (líneas 151, 243, 253), cada operación CRUD genera este ciclo completo.
-Un usuario que haga 3 operaciones CRUD en una sesión habrá sometido al navegador a 3
-ciclos completos de destrucción-recreación de 15 contextos WebGL cada uno.
+No es solo el limite numerico de contextos. Son tres factores combinados:
 
----
+1. **Limite de contextos**: Chrome = 16, Safari iOS = 4-8. Con 13 Cards + modal se supera en Chrome y se desborda completamente en Safari.
+2. **GPU memory**: Cada Canvas aloca buffers de color + depth + stencil independientes. Con 13 Canvas a ~300x300px, son ~13 render targets. Las texturas PBR (diffuse + normal + roughness + metalness + AO) de 2048x2048 suman ~80MB de VRAM por modelo. 13 modelos = ~1GB de VRAM solo en texturas.
+3. **Draco decompression**: Cada Canvas ejecuta el decoder Draco (via WASM worker) de forma independiente. 13 decompresiones concurrentes saturan la thread pool del browser.
 
-## 3. El atributo `loading="lazy"` y el momento de creación del contexto WebGL
+## 3. Evaluacion de estrategias
 
-### Comportamiento de `loading="lazy"` en model-viewer
+### A. Single shared Canvas con `View` de @react-three/drei
 
-`model-viewer` implementa `loading="lazy"` usando `IntersectionObserver`. El flujo es:
+**Concepto**: Un unico `<Canvas>` a nivel de `Gallery`. Cada `ModelCard` usa `<View>` (de drei v10, que ya tenemos) para definir una "ventana" dentro de ese Canvas. Internamente, `View` usa `gl.setViewport()` + `gl.setScissor()` para renderizar cada modelo en su region del Canvas, sin crear contextos adicionales.
 
-1. **Al montar el elemento** (`connectedCallback`): el Web Component se registra en el
-   `IntersectionObserver`. El canvas existe en el Shadow Root pero **no se inicializa
-   el contexto WebGL todavía**.
-2. **Al entrar al viewport** (intersection ratio > 0): `model-viewer` llama internamente
-   `this._renderer.setRendererSize()` y en ese momento se solicita el contexto WebGL con
-   `canvas.getContext('webgl2') || canvas.getContext('webgl')`.
-3. **Mientras está fuera del viewport**: el canvas existe pero no consume un slot de
-   contexto WebGL activo.
+**Ventajas**:
+- **1 solo contexto WebGL** para toda la galeria
+- Las texturas cargadas por useGLTF se comparten en el mismo renderer (cache de Three.js)
+- Draco decoder se inicializa una sola vez
+- Compatible con el IntersectionObserver existente (View puede ocultarse)
 
-### Implicación para la galería
+**Desventajas**:
+- View requiere que el Canvas sea `position: fixed` y cubra toda la pantalla (funciona como un overlay invisible)
+- Requiere reestructurar Gallery y ModelCard
+- El modal necesita tratamiento especial (puede usar el mismo Canvas o uno dedicado)
 
-El atributo `loading="lazy"` **ayuda** en la galería porque limita cuántos contextos se
-crean simultáneamente. En una galería de 15 modelos donde solo 4-6 son visibles en
-pantalla en un momento dado, solo esos 4-6 tienen contextos WebGL activos. Los demás
-están en estado "canvas registrado, sin contexto".
+**Veredicto**: **RECOMENDADA**. Es la solucion oficial del ecosistema R3F para exactamente este problema. drei v10 (que ya usamos) incluye `View`.
 
-**Sin embargo**, `loading="lazy"` **no resuelve** el problema del ciclo de
-desmontaje/remontaje porque:
-- Al desmontar, todos los contextos activos se destruyen (los visibles).
-- Al remontar, todos los modelos visibles solicitan contexto simultáneamente.
-- El burst de solicitudes simultáneas puede exceder los límites en Safari iOS.
+### B. Virtualizacion: solo 4-6 Canvas visibles
 
-### Cuándo `loading="lazy"` complica el problema
+**Concepto**: Destruir Canvas de tarjetas fuera del viewport con margen cero. Solo las tarjetas 100% visibles mantienen Canvas.
 
-En `model-viewer` con `reveal="auto"` (configuración actual), el reveal anima la aparición
-del modelo. Si el contexto WebGL se está creando durante el reveal, puede haber un frame
-vacío visible. En conexiones lentas o dispositivos con GPU lenta, esto produce un parpadeo
-("flash") notable para el usuario durante los remontajes.
+**Ventajas**:
+- Cambio minimo en la arquitectura
+- Reduce contextos activos a 4-6
 
----
+**Desventajas**:
+- Cada scroll destruye/recrea Canvas → lag visible
+- Las texturas PBR se descargan y recargan al scrollear → parpadeo
+- No resuelve el problema de GPU memory (6 modelos PBR aun suman ~480MB VRAM)
+- useGLTF cache se invalida al destruir el Canvas porque el renderer cambia
 
-## 4. Configuraciones de model-viewer para mejor gestión de contextos
+**Veredicto**: Paliativo, no solucion. Cambia el problema de "demasiados contextos" por "demasiado churn".
 
-### Atributos relevantes para el proyecto actual
+### C. Thumbnails estaticos: renderizar una vez, capturar como imagen
 
-**`loading="lazy"` (actual)** — Correcto. Mantener. Retrasa la creación del contexto
-hasta que el elemento sea visible. Reduce la presión de contextos simultáneos.
+**Concepto**: Montar Canvas, renderizar 1 frame, `canvas.toDataURL()`, destruir Canvas, mostrar `<img>`.
 
-**`reveal="auto"` (actual)** — Aceptable. Muestra el modelo tan pronto como el poster
-está listo. Alternativa: `reveal="interaction"` retrasa el render hasta que el usuario
-interactúa, reduciendo más la presión, pero degrada la UX visual de la galería.
+**Ventajas**:
+- 0 contextos WebGL permanentes en la galeria
+- Rendimiento de scroll optimo
 
-**`loading="eager"`** — No recomendado para la galería. Crearía todos los contextos
-inmediatamente al montar, garantizando alcanzar el límite de Chrome (16) con 16+ modelos.
+**Desventajas**:
+- Pierde la rotacion en hover (feature actual)
+- Renderizar 13 modelos PBR secuencialmente toma 10-30 segundos
+- Necesita un pipeline de pre-render (backend o build-time), no viable en client-side con modelos de 16MB
+- Complejidad alta para beneficio limitado si la solucion A existe
 
-**Dimensiones mínimas**: `model-viewer` no crea contexto WebGL si el elemento tiene
-`display: none` o dimensiones de 0x0. Las `ModelCard` del proyecto tienen `height: 100%`
-dentro de un contenedor con altura definida por CSS, lo que es correcto.
+**Veredicto**: Buena optimizacion complementaria para generar posters, pero no reemplaza el render interactivo.
 
-**`camera-controls` ausente (actual)** — Correcto para las cards. Sin interacción del
-usuario habilitada (`disable-zoom` + `interaction-prompt="none"`), el renderer puede
-optimizar el ciclo de actualización y reducir el uso de GPU.
+### D. OffscreenCanvas / Web Workers
 
-### Configuración recomendada para optimizar contextos
+**Concepto**: Mover el render de Three.js a un Web Worker con OffscreenCanvas.
 
-```html
-<model-viewer
-  loading="lazy"
-  reveal="auto"
-  ar-status="not-presenting"
-  performance-mode="prefer-performance"
-  ...
-/>
-```
+**Ventajas**:
+- Libera el main thread
+- Cada worker tiene su contexto aislado
 
-El atributo `performance-mode="prefer-performance"` (disponible desde model-viewer 3.3+)
-permite al renderer usar texturas de menor resolución y reducir el uso de VRAM, lo que
-indirectamente reduce la presión sobre el pool de contextos en Safari iOS.
+**Desventajas**:
+- OffscreenCanvas **comparte el mismo limite de contextos WebGL** del proceso GPU. No reduce el numero de contextos.
+- React Three Fiber no soporta OffscreenCanvas de forma nativa
+- drei hooks (useGLTF, OrbitControls, etc.) asumen acceso al DOM → no funcionan en workers
+- Complejidad extrema para cero beneficio en el problema de contextos
 
----
+**Veredicto**: **No aplicable**. No resuelve el problema.
 
-## 5. Mantener model-viewer montado vs. ciclo loading: análisis del patrón alternativo
+## 4. Solucion recomendada: Shared Canvas + View
 
-### El patrón actual (problemático)
+### Arquitectura propuesta
 
 ```
-[loadModels() llamada] → setLoading(true) → desmonta todos ModelCard
-→ fetch Supabase (async) → setLoading(false) → monta todos ModelCard
+Gallery.tsx
+├── <div className="gallery-grid">
+│   ├── <ModelCard ref={cardRef1}> ← div puro, sin Canvas
+│   ├── <ModelCard ref={cardRef2}>
+│   └── ...
+└── <Canvas> ← UN SOLO Canvas, fixed, cubre toda la pagina
+    ├── <View track={cardRef1}> <ModelScene url="..." /> </View>
+    ├── <View track={cardRef2}> <ModelScene url="..." /> </View>
+    └── ...
 ```
 
-Este patrón desmonta y remonta todos los `<model-viewer>` en cada operación CRUD.
+### Ejemplo de implementacion
 
-### Patrón alternativo: mantener montados, actualizar datos
+**ModelCard.tsx** (simplificado, sin Canvas propio):
 
-La solución de mantener los `ModelCard` montados durante la recarga de datos evita
-completamente el ciclo de destrucción-recreación de contextos. El cambio requeriría
-modificar `loadModels()` en `Gallery.tsx` para no alternar `loading`:
+```tsx
+import { forwardRef, useState, useRef, useEffect } from 'react';
 
-```typescript
-// Patrón alternativo — NO desmonta los model-viewer
-const loadModels = async () => {
-  // NO llamar setLoading(true) aquí para las recargas post-CRUD
-  try {
-    const [modelsRes, counts, commentCountsData] = await Promise.all([
-      supabase.from('models').select('*').order('created_at', { ascending: false }),
-      fetchLikeCounts(),
-      fetchCommentCounts(),
-    ]);
-    if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
-    setLikeCounts(counts);
-    setCommentCounts(commentCountsData);
-  } catch (err) {
-    console.error('Error loading models:', err);
+interface ModelCardProps {
+  title: string;
+  student: string;
+  category: string;
+  // ... resto de props existentes, SIN modelUrl
+  onClick: () => void;
+}
+
+// forwardRef para que Gallery pueda pasar el ref al View.track
+const ModelCard = forwardRef<HTMLDivElement, ModelCardProps>(
+  ({ title, student, category, tags, canEdit, likeCount, commentCount,
+     isLiked, onLike, onClick, onEdit, onDelete }, ref) => {
+
+    const [hovered, setHovered] = useState(false);
+
+    return (
+      <div className="card" onMouseEnter={() => setHovered(true)}
+           onMouseLeave={() => setHovered(false)}>
+        {/* Este div es el "tracking target" del View */}
+        <div ref={ref} className="card-viewer" onClick={onClick}>
+          {/* NO hay Canvas aqui — View renderiza en este rect */}
+        </div>
+        <div className="card-info" onClick={onClick}>
+          {/* ... info existente sin cambios ... */}
+        </div>
+      </div>
+    );
   }
-};
+);
 ```
 
-### ¿Es este patrón suficiente para evitar la acumulación?
+**Gallery.tsx** (Canvas compartido):
 
-**Sí, en el 95% de los casos.** Al mantener los `ModelCard` montados:
+```tsx
+import { useRef, createRef } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { View } from '@react-three/drei';
+import ModelCard from './ModelCard';
+import ModelScene from './ModelScene';
 
-1. Los contextos WebGL existentes **no se destruyen**. Los mismos contextos sirven para
-   los mismos modelos.
-2. React reconcilia la lista actualizada de `filteredModels`: los modelos que permanecen
-   en la lista conservan su instancia de `<model-viewer>` (siempre que la `key` sea
-   estable, que en el código actual es `model.id` — correcto).
-3. Solo los modelos **nuevos** (upload) crean un contexto WebGL adicional.
-4. Los modelos **eliminados** destruyen un contexto al desmontarse.
+export default function Gallery() {
+  const [models, setModels] = useState<ModelRow[]>([]);
+  // Refs para tracking de cada card
+  const cardRefs = useRef<Map<string, React.RefObject<HTMLDivElement>>>(new Map());
 
-**Caso que sí genera desmontaje**: si el modelo recién subido aparece en posición 1 de
-la lista (order por `created_at DESC`) y hay 16 modelos en pantalla, Chrome destruirá
-el contexto del modelo número 16 por el límite de 16. Pero esto es un comportamiento
-puntual y acotado, no una destrucción masiva.
+  const getCardRef = (id: string) => {
+    if (!cardRefs.current.has(id)) {
+      cardRefs.current.set(id, createRef<HTMLDivElement>());
+    }
+    return cardRefs.current.get(id)!;
+  };
 
-**Limitación del patrón**: durante la operación CRUD la galería muestra datos
-posiblemente desactualizados (sin indicador de carga). Se necesita un estado de carga
-separado que no afecte el montaje de los cards, por ejemplo un spinner overlay o un
-indicador en el contador de modelos.
+  return (
+    <>
+      <div className="gallery-grid">
+        {filteredModels.map((model) => (
+          <ModelCard
+            key={model.id}
+            ref={getCardRef(model.id)}
+            title={model.title}
+            student={model.student}
+            /* ... resto de props ... */
+          />
+        ))}
+      </div>
 
----
-
-## 6. Diferencias críticas entre Chrome/Edge y Safari en destrucción de contextos WebGL
-
-### Chrome / Edge: política cooperativa con recuperación
-
-Chrome implementa `WEBGL_lose_context` como una extensión estándar que `model-viewer`
-puede usar. Cuando un `<model-viewer>` recibe `webglcontextlost`:
-
-1. El evento `webglcontextlost` se dispara en el canvas interno del Shadow Root.
-2. `model-viewer` (v3.x) captura el evento y llama `preventDefault()` para indicar que
-   intentará recuperarse.
-3. Tras un breve timeout, Chrome dispara `webglcontextrestored`.
-4. `model-viewer` reinicializa el renderer y vuelve a cargar las texturas del modelo.
-
-Este proceso de recuperación es **visible para el usuario** como un flash negro seguido
-de la recarga del modelo (~500ms en dispositivos medios). Chrome también expone el límite
-de 16 contextos como una constante interna no configurable desde JS.
-
-### Safari: política destructiva sin garantía de recuperación
-
-Safari maneja la pérdida de contexto de forma diferente en dos escenarios:
-
-**Escenario A — límite de contextos superado**: Safari destruye el contexto más antiguo
-pero puede no disparar `webglcontextrestored` de forma confiable. En Safari 15 y
-anteriores, el evento de restauración a veces no llega nunca, dejando el `<model-viewer>`
-en estado negro permanente hasta que el usuario hace scroll (que fuerza un re-render del
-viewport y puede disparar la recuperación).
-
-**Escenario B — presión de memoria del sistema**: Safari iOS puede destruir contextos
-WebGL como parte de la gestión de memoria del proceso del navegador, sin ningún evento
-previo o señal al código JS. Esto ocurre cuando otras aplicaciones del sistema operativo
-demandan RAM. En este caso no hay `webglcontextlost`, simplemente el canvas deja de
-renderizar. `model-viewer` no puede recuperarse de este escenario porque nunca recibió
-la señal.
-
-**Diferencia crítica resumida**:
-
-| Aspecto                          | Chrome / Edge          | Safari                          |
-|----------------------------------|------------------------|---------------------------------|
-| Evento `webglcontextlost`        | Siempre confiable      | Poco confiable en iOS           |
-| Evento `webglcontextrestored`    | Sí, siempre            | Inconsistente pre-Safari 16     |
-| Recuperación automática          | Sí (~500ms)            | Parcial o nula                  |
-| Destrucción por presión de RAM   | Controlada y señalada  | Silenciosa e irrecuperable      |
-| Comportamiento post-navegación   | Restaura al volver     | Puede no restaurar en iOS       |
-
----
-
-## 7. Recomendaciones concretas para el proyecto
-
-Las recomendaciones están ordenadas por impacto y facilidad de implementación.
-
-### R1 — CRÍTICA: Eliminar `setLoading(true)` en recargas post-CRUD
-
-**Archivo**: `src/components/Gallery.tsx`
-**Líneas afectadas**: 39, 189-196
-
-Separar el estado de carga inicial del estado de refresco de datos. El `setLoading(true)`
-solo debería usarse en la carga inicial (`init()`, línea 77). Las recargas post-CRUD
-(`handleDelete` línea 151, `UploadForm.onSuccess` línea 243, `EditModelForm.onSave` línea
-253) no deberían desmontar los cards.
-
-Implementar un estado `isRefreshing` separado que muestre un indicador visual mínimo
-(spinner en el contador o overlay translúcido) sin desmontar el grid.
-
-**Impacto**: Elimina el 95% de los ciclos de destrucción-recreación de contextos WebGL.
-
-### R2 — ALTA: Agregar límite de modelos visibles en el grid
-
-Con 20+ modelos en pantalla, Chrome alcanza su límite de 16 contextos incluso sin recargas.
-Implementar paginación (12 modelos por página) o virtualización del scroll (usando
-`IntersectionObserver` para desmontar cards fuera del viewport con un buffer de 2 rows).
-
-**Impacto**: Mantiene la cantidad de contextos activos por debajo del límite de 16 en
-todos los navegadores, incluyendo Safari iOS.
-
-### R3 — MEDIA: Verificar versión de model-viewer y activar `performance-mode`
-
-Verificar que el proyecto use `@google/model-viewer >= 3.3.0` y agregar el atributo
-`performance-mode="prefer-performance"` a las instancias en `ModelCard.tsx`. Esto reduce
-el uso de VRAM por instancia, especialmente en dispositivos Safari iOS donde el límite
-práctico es de 4 contextos.
-
-### R4 — MEDIA: Implementar manejo explícito de `webglcontextlost`
-
-Para los casos donde el contexto se pierda por presión de memoria (especialmente Safari),
-agregar un event listener en el Shadow Root de cada `model-viewer` que muestre un
-indicador visual al usuario y ofrezca un botón de recarga manual, en lugar de dejar el
-modelo en negro sin feedback.
-
-### R5 — BAJA: Monitoreo en producción
-
-Agregar telemetría básica en `ModelCard.tsx` para detectar pérdidas de contexto en
-producción. Dado que el deploy es en GitHub Pages (sin backend propio), usar
-`console.warn` estructurado que pueda capturarse con herramientas de monitoreo del lado
-cliente (Sentry, LogRocket) si se integran en el futuro.
-
----
-
-## 8. Plan de implementación prioritario
-
-```
-Sprint 1 (1 día) — R1: Separar estados de carga
-  - Modificar loadModels() en Gallery.tsx
-  - Agregar estado isRefreshing
-  - Implementar indicador visual alternativo
-
-Sprint 2 (2 días) — R2: Paginación o virtualización
-  - Implementar paginación de 12 modelos
-  - Mantener el filtro por categoría compatible
-
-Sprint 3 (1 día) — R3: Actualización de model-viewer
-  - Verificar versión en package.json
-  - Agregar performance-mode
-  - Verificar compatibilidad con atributos actuales
+      {/* UN SOLO Canvas para toda la galeria */}
+      <Canvas
+        style={{
+          position: 'fixed',
+          top: 0, left: 0,
+          width: '100vw', height: '100vh',
+          pointerEvents: 'none', // Los clicks pasan al DOM normal
+        }}
+        eventSource={document.body}
+        gl={{ antialias: false, powerPreference: 'low-power' }}
+        dpr={1}
+        frameloop="demand"
+      >
+        {filteredModels.map((model) => (
+          <View key={model.id} track={getCardRef(model.id)}>
+            <ModelScene
+              url={model.file_url}
+              autoRotate={false}
+              enableZoom={false}
+              enablePan={false}
+              enableRotate={false}
+            />
+          </View>
+        ))}
+      </Canvas>
+    </>
+  );
+}
 ```
 
----
+### Consideraciones de implementacion
 
-## Referencias técnicas
+1. **`pointerEvents: 'none'`** en el Canvas fixed: los eventos de click, hover, etc. pasan al DOM normal debajo. Los botones de like, edit, delete siguen funcionando sin cambios.
 
-- Chromium source: `src/third_party/blink/renderer/modules/webgl/webgl_context_group.cc`
-  — constante `kMaxWebGLContexts = 16`
-- WebGL spec: `WEBGL_lose_context` extension, sección 5.14.13
-- model-viewer GitHub: issue #1846 "WebGL context loss handling in galleries"
-- Safari WebKit: `WebGLContextGroup::limitActiveContexts()` — límite configurable por
-  entorno de ejecución
-- MDN: `HTMLCanvasElement: webglcontextlost event`
+2. **Hover/autoRotate**: Para detectar hover en cada card y activar autoRotate, cada ModelCard puede comunicar su estado de hover via callback o context. ModelScene ya acepta `autoRotate` como prop.
+
+3. **Modal**: El ModelModal puede seguir usando su propio Canvas dedicado (es uno solo, no causa problemas) o integrarse como otro View dentro del Canvas compartido.
+
+4. **IntersectionObserver**: `View` de drei internamente usa IntersectionObserver para no renderizar regiones fuera del viewport. No necesitamos nuestro observer custom.
+
+5. **SortableModelCard / DnD**: forwardRef es compatible con @dnd-kit. El ref del card-viewer se pasa al View.track mientras el ref del contenedor va a useSortable.
+
+6. **Draco decoder**: Se inicializa una sola vez porque hay un solo renderer. `useGLTF.setDecoderPath()` sigue funcionando igual.
+
+7. **Texture cache**: Con un solo renderer, `useGLTF` reutiliza texturas ya decodificadas. Si dos modelos comparten la misma textura, solo se carga una vez en VRAM.
+
+## 5. Metricas esperadas
+
+| Metrica | Antes (13 Canvas) | Despues (1 Canvas + View) |
+|---------|-------------------|---------------------------|
+| Contextos WebGL | 13-14 | 1 |
+| Instancias WebGLRenderer | 13-14 | 1 |
+| Draco WASM instances | 13 | 1 |
+| VRAM overhead (render targets) | ~13x buffers | 1 buffer (viewport/scissor) |
+| Texture cache | Fragmentado por renderer | Unificado, con deduplicacion |
+| Context Lost events | 30+ | 0 (esperado) |
+| Safari iOS compatible | No (limite 4) | Si (1 contexto) |
+
+## 6. Plan de implementacion
+
+```
+Sprint 1 (1 dia):
+  - [ ] Refactorizar ModelCard: extraer Canvas, usar forwardRef
+  - [ ] Agregar Canvas compartido en Gallery con View por modelo
+  - [ ] Verificar que el grid visual no cambie
+
+Sprint 2 (1 dia):
+  - [ ] Integrar hover → autoRotate via estado compartido
+  - [ ] Verificar que DnD (reorder mode) funcione con forwardRef
+  - [ ] Probar modal (Canvas propio vs View adicional)
+
+Sprint 3 (medio dia):
+  - [ ] Testing en Chrome, Firefox, Safari
+  - [ ] Verificar 0 context lost en DevTools (chrome://gpu)
+  - [ ] Build de produccion y deploy
+```
+
+## 7. Riesgos
+
+1. **View + OrbitControls por modelo**: Cada View con OrbitControls independientes puede generar conflictos de eventos. En las cards no hay controles (todo disabled), asi que no aplica. En el modal si hay controles, pero es un solo View activo.
+
+2. **Performance con 13 Views**: Un solo Canvas renderizando 13 viewports por frame es mas eficiente que 13 Canvas separados, pero si todos los modelos estan en pantalla, el draw call count es el mismo. La ganancia es en overhead de contextos, no en geometria.
+
+3. **Z-index del Canvas fixed**: El Canvas fixed necesita `z-index` alto pero `pointerEvents: none`. Si algun modal o overlay tiene z-index conflictivo, el Canvas puede renderizar encima o debajo incorrectamente. Solucion: manejar visibility del Canvas cuando hay modales abiertos.

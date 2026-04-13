@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { Canvas } from '@react-three/fiber';
-import ModelScene from './ModelScene';
 
 interface ModelCardProps {
   title: string;
@@ -8,6 +6,7 @@ interface ModelCardProps {
   category: string;
   tags: string[];
   modelUrl: string;
+  thumbnailUrl?: string | null;
   canEdit: boolean;
   likeCount: number;
   commentCount: number;
@@ -37,7 +36,7 @@ export default function ModelCard({
   student,
   category,
   tags,
-  modelUrl,
+  thumbnailUrl,
   canEdit,
   likeCount,
   commentCount,
@@ -48,7 +47,6 @@ export default function ModelCard({
   onDelete,
 }: ModelCardProps) {
   const [animating, setAnimating] = useState(false);
-  const [hovered, setHovered] = useState(false);
 
   const handleLike = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -58,25 +56,23 @@ export default function ModelCard({
   };
 
   return (
-    <div
-      className="card"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
+    <div className="card">
       <div className="card-viewer" onClick={onClick}>
-        <Canvas
-          camera={{ position: [2.5, 1.8, 2.5], fov: 40 }}
-          gl={{ antialias: true }}
-          frameloop={hovered ? 'always' : 'demand'}
-        >
-          <ModelScene
-            url={modelUrl}
-            autoRotate={hovered}
-            enableZoom={false}
-            enablePan={false}
-            enableRotate={false}
+        {thumbnailUrl ? (
+          <img
+            src={thumbnailUrl}
+            alt={title}
+            className="card-thumbnail"
+            loading="lazy"
           />
-        </Canvas>
+        ) : (
+          <div className="card-thumbnail-placeholder">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#444" strokeWidth="1.5">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+            </svg>
+            <span>3D</span>
+          </div>
+        )}
         <div className="card-overlay-hover">
           <button className="view-btn">Ver en detalle</button>
         </div>

@@ -2,7 +2,7 @@
 
 > **Para Claude en cualquier dispositivo:** Lee este archivo al inicio de cada sesión.
 > Es la fuente de verdad portable del proyecto. Complementa `CLAUDE.md`.
-> Última actualización: 2026-04-10
+> Última actualización: 2026-04-13
 
 ---
 
@@ -23,33 +23,37 @@ Profesor de la clase **"Estudio de Creación Digital 4"** — Universidad El Bos
 
 | Campo | Valor |
 |-------|-------|
-| **Framework** | Astro 6 + React 19 |
-| **Backend** | Supabase (PostgreSQL 15 + Auth + Storage) |
-| **3D** | `<model-viewer>` (Google Web Component) |
+| **Frontend** | Vite 6 + React 19 + React Router 7 |
+| **3D** | Three.js + React Three Fiber + Drei |
+| **Backend** | Node.js + Express (DigitalOcean Droplet) |
+| **Database** | PostgreSQL 16 (local en droplet) |
+| **Storage** | DigitalOcean Spaces (S3 CDN) |
+| **Auth** | JWT custom (bcryptjs + jsonwebtoken) |
 | **Styling** | CSS custom (dark + neubrutalism) |
-| **Deploy** | GitHub Pages via GitHub Actions |
+| **Deploy** | Nginx en Droplet (159.203.189.167) |
 | **Repo** | `Karlvolsung88/galeria-3d-clase` |
-| **URL prod** | https://karlvolsung88.github.io/galeria-3d-clase/ |
+| **URL prod** | http://159.203.189.167 (pendiente: ceopacademia.org) |
 | **Semestre** | 2026-1 |
 
 ### Ramas
 - `develop` — TODO el desarrollo diario
 - `main` — solo recibe merges para producción. Nunca desarrollar directo en main.
 
-### Tablas Supabase
+### Base de datos (PostgreSQL en droplet)
 ```
-profiles   (id UUID, full_name, role: admin|student, artstation_url, instagram_url, bio)
-models     (id, title, student, category, tags[], file_name, file_url, user_id → profiles)
-student_skills (user_id → profiles, skill_name, value 0–100)
-likes      (user_id → auth.users, model_id → models)
-comments   (user_id → auth.users, model_id → models, text)
+profiles       (id UUID, full_name, role, email, password_hash, bio, artstation_url, instagram_url)
+models         (id, title, student, category, tags[], file_name, file_url, file_size, user_id → profiles, sort_order, thumbnail_url)
+student_skills (user_id → profiles, skill_name, value 0-100)
+likes          (user_id → profiles, model_id → models)
+comments       (user_id → profiles, model_id → models, text)
 ```
 
-> **Nota crítica:** `comments.user_id` y `likes.user_id` apuntan a `auth.users`, NO a `public.profiles`.
-> Por eso los joins PostgREST `.select('*, profiles(...)')` dan 400. Usar siempre dos queries separadas.
+### API Client
+El frontend usa `src/lib/api.ts` — un cliente REST puro con JWT auth.
+NO se usa Supabase SDK. Todo pasa por `/api/*` (Express) y `/cdn/*` (Nginx proxy a DO Spaces).
 
 ### Categorías de modelos
-`personaje | vehículo | criatura | objeto`
+`personaje | vehiculo | criatura | objeto`
 
 ### Skills de estudiantes
 `modelado_3d | escultura | uv_mapping | texturizado_pbr | optimizacion | renderizado`
@@ -66,7 +70,7 @@ comments   (user_id → auth.users, model_id → models, text)
 | Nombre | Cargo | Skill | Comando |
 |--------|-------|-------|---------|
 | **Claude Renard** | Líder de Desarrollo | *(yo)* | — |
-| **Sebastián Torres Mejía** | Senior Dev Astro/React | `senior-dev-astro` | `/dev` |
+| **Sebastián Torres Mejía** | Senior Dev React | `senior-dev-astro` | `/dev` |
 | **Laura Botero Ríos** | Analista y Planificadora | `planner-analyst` | `/plan` |
 | **Natalia Vargas Ospina** | Arquitecta Web | `software-architect-web` | `/architect` |
 | **Isabella Moreno Ríos** | Diseñadora Frontend 3D | `frontend-3d` | `/frontend` |
@@ -80,64 +84,54 @@ comments   (user_id → auth.users, model_id → models, text)
 
 ## Decisiones Técnicas Importantes
 
-### Por qué NO hay ClientRouter (ViewTransitions)
-Astro 6 renombró `ViewTransitions` a `ClientRouter`. Pero `ClientRouter` es incompatible con múltiples islands `client:load` — los componentes React no se rehidratan en el swap de página, dejando pantallas en blanco. Se removió. La galería usa navegación estándar con full-page reload.
+### Por qué se migró de Supabase a DigitalOcean (2026-04-13)
+Supabase Auth tenía un bug crítico: `signInWithPassword` retornaba HTTP 200 pero el SDK JS nunca resolvía la Promise en el navegador. Después de múltiples intentos de fix (timeout wrappers, disable realtime, etc.) se decidió migrar completamente a un stack propio: Express + PostgreSQL + DO Spaces + JWT. El login ahora responde en <100ms. Bundle reducido ~200KB al eliminar el SDK de Supabase.
 
-### Patrón obligatorio para queries con Supabase v2
-Supabase v2 encola TODAS las queries durante el refresh de token al init. Si se lanzan queries antes de `await getSession()`, las promesas nunca se resuelven. Patrón correcto en todos los componentes:
-
-```typescript
-const init = async () => {
-  const { data: { session } } = await supabase.auth.getSession(); // PRIMERO
-  // luego queries que dependan de auth
-  // luego queries públicas
-};
+### Arquitectura actual (post-migración)
 ```
+Browser → Nginx (puerto 80)
+  ├─ /          → archivos estáticos (dist/)
+  ├─ /api/*     → proxy → Express :3000
+  └─ /cdn/*     → proxy → DO Spaces CDN
+```
+
+Los archivos GLB y thumbnails están en DO Spaces pero se sirven via `/cdn/` (proxy Nginx) para evitar CORS.
+
+### Thumbnails (720x405, WebP 0.85)
+Generados client-side con React Three Fiber: ThumbnailGenerator renderiza cada modelo en un Canvas de 720x405px (ratio 16:9, igual que Sketchfab) con dpr=2, captura con toBlob y sube via API. El componente ThumbnailCapture espera 30 frames dentro de Suspense para asegurar que el modelo esté cargado.
 
 ### Por qué AuthModal usa createPortal
-`#top-bar` tiene `backdrop-filter: blur(12px)` que crea un containing block para `position: fixed`. Sin `createPortal`, el modal queda posicionado relativo al top-bar (44px desde arriba). Fix: `createPortal(content, document.body)`.
-
-### Joins PostgREST rotos en comments/likes
-Las FKs de `comments.user_id` y `likes.user_id` apuntan a `auth.users`, no a `public.profiles`. PostgREST no puede resolver el join. Siempre usar dos queries separadas:
-```typescript
-// 1. fetch comments con select('*')
-// 2. fetch profiles con .in('id', userIds)
-// 3. merge manual
-```
+`#top-bar` tiene `backdrop-filter: blur(12px)` que crea un containing block para `position: fixed`. Sin `createPortal`, el modal queda posicionado relativo al top-bar. Fix: `createPortal(content, document.body)`.
 
 ---
 
-## Estado del Proyecto (2026-04-10)
+## Estado del Proyecto (2026-04-13)
 
 ### Lo que está funcionando en producción
-- Galería principal con modelos 3D (`model-viewer`)
+- Galería con 13 modelos 3D (React Three Fiber)
+- Thumbnails 720x405 (calidad Sketchfab) para todos los modelos
 - Filtros por categoría
-- Sistema de likes con conteo
-- **Contador de comentarios** (icono burbuja al estilo Instagram) — recién desplegado
-- Sistema de comentarios completo (modal)
-- Auth con Supabase (admin / student / visitante)
-- Página `/estudiantes` con radar chart SVG de habilidades
-- Página `/perfil`
-- Upload de modelos GLB (solo admin/student)
-- RLS policies en todas las tablas
-
-### Cuándo convocar a Felipe Vargas Montoya (/browser)
-- Cualquier comportamiento diferente entre Chrome y Edge/Safari/Firefox
-- Modelos 3D en blanco o que no cargan en algún navegador
-- **Primer diagnóstico siempre: mirar el Network tab** — si no hay requests a Supabase, el problema es JS/auth, no WebGL
-- Caso resuelto (2026-04-10): Edge bloqueaba `getSession()` silenciosamente → `getSessionSafe()` con timeout de 5s
+- Sistema de likes y comentarios
+- Auth JWT (admin/student/visitante)
+- Upload de modelos GLB
+- Drag & drop reorder (admin)
+- Regeneración masiva de thumbnails (admin)
+- Página /estudiantes con radar chart SVG
+- Página /perfil
+- Backend en DigitalOcean (Express + PostgreSQL + Spaces)
+- Proxy CDN via Nginx (sin CORS)
 
 ### Bugs conocidos resueltos (no reabrir)
-- Race condition auth → patrón `await getSession()` en `init()`
-- Modal login descentrado → `createPortal`
-- Loading infinito → `try/catch/finally` en todos los componentes
-- Comments 400 → dos queries separadas
-- Vite cache corruption → `rm -rf node_modules/.vite && npm run dev -- --force`
+- Supabase login hanging → migrado a JWT custom
+- ThumbnailCapture firing before model loads → dentro de Suspense
+- Race condition auth → patrón await en init()
+- Modal login descentrado → createPortal
+- Reorder RLS error → update individual en vez de upsert
 
 ### Herramientas
 - `gh` CLI **NO está instalado** en Windows. Usar `git` directamente.
 - Build: `npm run build` — siempre antes de commit si se tocó UI
-- Dev: `npm run dev`
+- Dev: `npm run dev` (proxy a droplet via vite.config.ts)
 
 ---
 

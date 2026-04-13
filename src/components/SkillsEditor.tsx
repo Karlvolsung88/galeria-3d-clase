@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SKILLS, upsertStudentSkills, updateStudentLinks, type StudentWithSkills, type SkillKey } from '../lib/supabase';
+import { SKILLS, upsertStudentSkills, updateStudentLinks, type StudentWithSkills, type SkillKey } from '../lib/api';
 
 interface Props {
   students: StudentWithSkills[];

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { supabase } from '../lib/supabase';
+import { login, register } from '../lib/api';
 
 interface AuthModalProps {
   onSuccess: () => void;
@@ -37,19 +37,14 @@ export default function AuthModal({ onSuccess, onClose }: AuthModalProps) {
     setError('');
     setLoading(true);
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    setLoading(false);
-
-    if (authError) {
-      setError('Credenciales incorrectas');
-      return;
+    try {
+      await login(email, password);
+      setLoading(false);
+      onSuccess();
+    } catch (err: any) {
+      setLoading(false);
+      setError(err.message || 'Credenciales incorrectas');
     }
-
-    onSuccess();
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -64,36 +59,15 @@ export default function AuthModal({ onSuccess, onClose }: AuthModalProps) {
 
     setLoading(true);
 
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName },
-      },
-    });
-
-    if (signUpError) {
+    try {
+      await register(email, password, fullName);
       setLoading(false);
-      setError(signUpError.message);
-      return;
+      setSuccess('Cuenta creada exitosamente. Inicia sesión.');
+      setMode('login');
+    } catch (err: any) {
+      setLoading(false);
+      setError(err.message);
     }
-
-    // Create profile in database (no trigger needed)
-    if (signUpData.user) {
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: signUpData.user.id,
-        full_name: fullName,
-        role: 'student',
-      });
-
-      if (profileError) {
-        console.error('Profile creation error:', profileError);
-      }
-    }
-
-    setLoading(false);
-    setSuccess('Cuenta creada exitosamente. Inicia sesión.');
-    setMode('login');
   };
 
   const resetForm = () => {

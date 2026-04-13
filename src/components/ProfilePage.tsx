@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase, getUserProfile, updateProfile, type Profile } from '../lib/supabase';
+import { initAuth, getMe, updateProfile, type Profile } from '../lib/api';
 
 const BIO_MAX = 150;
 
@@ -26,12 +26,12 @@ export default function ProfilePage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          window.location.href = '/galeria-3d-clase/';
+        const { user } = await initAuth();
+        if (!user) {
+          window.location.href = '/';
           return;
         }
-        const p = await getUserProfile();
+        const p = await getMe();
         setProfile(p);
         if (p) {
           setFullName(p.full_name ?? '');
@@ -124,7 +124,6 @@ export default function ProfilePage() {
       </div>
 
       {mode === 'view' ? (
-        /* ── VISTA ── */
         <div className="profile-view">
           {profile.bio && (
             <div className="profile-section">
@@ -156,7 +155,6 @@ export default function ProfilePage() {
           </div>
         </div>
       ) : (
-        /* ── EDICIÓN ── */
         <div className="profile-form">
           <div className="profile-field">
             <label className="profile-label" htmlFor="pf-name">Nombre completo</label>

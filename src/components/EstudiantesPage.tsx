@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
-  supabase,
-  getSessionSafe,
-  getUserProfile,
+  initAuth, onAuthStateChange, getMe,
   fetchAllStudentsWithSkills,
   type Profile,
   type StudentWithSkills,
-} from '../lib/supabase';
+} from '../lib/api';
 import StudentCard from './StudentCard';
 import SkillsEditor from './SkillsEditor';
 
@@ -21,18 +19,11 @@ export default function EstudiantesPage() {
     let isMounted = true;
 
     const init = async () => {
-      // Esperar que el token refresh de Supabase v2 complete antes
-      // de lanzar cualquier query — sin esto las queries quedan en
-      // cola indefinidamente cuando hay sesión activa
-      const { data: { session } } = await getSessionSafe();
+      const { user, profile: p } = await initAuth();
       if (!isMounted) return;
 
-      if (session) {
-        const p = await getUserProfile();
-        if (isMounted) setProfile(p);
-      }
+      if (user && p) setProfile(p);
 
-      // Auth resuelto — ahora las queries se ejecutan
       try {
         const data = await fetchAllStudentsWithSkills();
         if (isMounted) setStudents(data);
@@ -43,24 +34,21 @@ export default function EstudiantesPage() {
       }
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+    const unsub = onAuthStateChange(async (user) => {
       if (!isMounted) return;
-      getSessionSafe().then(({ data: { session } }) => {
-        if (!isMounted) return;
-        if (session) {
-          getUserProfile().then(p => { if (isMounted) setProfile(p); });
-        } else {
-          if (isMounted) setProfile(null);
-        }
-      });
+      if (user) {
+        const p = await getMe();
+        if (isMounted) setProfile(p);
+      } else {
+        if (isMounted) setProfile(null);
+      }
     });
 
     init();
 
-    return () => { isMounted = false; subscription.unsubscribe(); };
+    return () => { isMounted = false; unsub(); };
   }, []);
 
-  // Re-fetch after admin saves skills so cards update
   const handleSaved = async () => {
     const data = await fetchAllStudentsWithSkills();
     setStudents(data);
@@ -89,7 +77,7 @@ export default function EstudiantesPage() {
       ) : (
         <div className="estudiantes-grid">
           {students.map((student) => (
-            <StudentCard key={student.id} student={student} currentUserId={profile?.id} />
+            <StudentCard key={student.id} student={student} currentUserId={profile?.id} isAdmin={isAdmin} onDeleted={handleSaved} />
           ))}
         </div>
       )}

@@ -2,394 +2,326 @@
 autor: Natalia Vargas Ospina
 cargo: Arquitecta Web
 fecha: 2026-04-10
-tema: Separación de estados loading/refreshing en Gallery.tsx
+tema: Arquitectura Canvas compartido — View de drei vs Canvas individual
 estado: revision
 ---
 
 ## Resumen ejecutivo
 
-Gallery.tsx tiene un estado `loading: boolean` que cumple dos responsabilidades
-estructuralmente incompatibles: bloquear el render inicial hasta que haya datos, y
-señalizar actualizaciones posteriores. Este doble uso es la causa directa del
-problema de recarga: cada operación de escritura (subida, edición, borrado) desmonta
-la totalidad del grid y fuerza la re-descarga de todos los archivos GLB.
+Con 13 tarjetas, cada `ModelCard` crea su propio `<Canvas>` R3F. Chrome limita ~16 contextos WebGL simultaneos; al superar ese umbral, los contextos se pierden (`THREE.WebGLRenderer: Context Lost`). Los modelos con texturas PBR grandes (4-16 MB) agravan el problema porque cada contexto reserva GPU memory para sus texturas de forma independiente, sin compartir recursos entre Canvas.
 
-La propuesta de separar en `initialLoading` + `refreshing` es arquitecturalmente
-correcta. A continuación documento los detalles de implementación, los riesgos
-secundarios y la estrategia para la race condition.
+La solucion es migrar a un unico `<Canvas>` global con el componente `View` de `@react-three/drei`, que usa scissor testing para renderizar multiples viewports independientes dentro de un solo contexto WebGL.
 
 ---
 
-## 1. Diagnóstico del estado actual
+## 1. Diagnostico de la arquitectura actual
 
-### 1.1 El problema real: un boolean, dos semánticas
+### 1.1 Flujo actual
 
-```typescript
-// Gallery.tsx línea 20
-const [loading, setLoading] = useState(true);
+```
+Gallery.tsx
+  └─ filteredModels.map(model =>
+       <ModelCard>
+         <Canvas>                    ← contexto WebGL #N
+           <ModelScene>
+             <Environment preset="studio" />
+             <Model3D url={...} />   ← useGLTF carga GLB + texturas
+             <OrbitControls />
+           </ModelScene>
+         </Canvas>
+       </ModelCard>
+     )
+
+ModelModal.tsx (al abrir)
+  └─ <Canvas>                        ← contexto WebGL #N+1
+       <ModelScene url={...} />
+     </Canvas>
 ```
 
-```typescript
-// Gallery.tsx líneas 38-54
-const loadModels = async () => {
-  setLoading(true);   // ← ejecutado tanto en init() como en refreshes
-  try {
-    // queries...
-  } finally {
-    setLoading(false);
-  }
-};
+### 1.2 Recursos por Canvas
+
+Cada `<Canvas>` individual crea:
+- 1 WebGLRenderer (1 contexto WebGL)
+- 1 Environment map (studio preset) cargado independientemente
+- 1 instancia de Draco decoder
+- Texturas PBR propias (no compartidas entre Canvas)
+- 1 set de luces (ambient + 2 directional)
+
+Con 13 cards + 1 modal = 14 contextos potenciales. Chrome pierde contextos a partir de ~16 y empieza a reciclar los mas antiguos.
+
+### 1.3 Por que los modelos grandes no cargan
+
+Los modelos con texturas PBR de 4-16 MB necesitan GPU memory para decodificar y almacenar las texturas (normal, roughness, metalness, base color). Con N contextos independientes, la GPU reserva memoria N veces para el environment map y no puede compartir texturas entre contextos. Al llegar al limite de VRAM, el driver fuerza context loss.
+
+---
+
+## 2. Analisis del componente View de drei
+
+### 2.1 Como funciona internamente
+
+Lei el source de `@react-three/drei@10.7.7` (`node_modules/@react-three/drei/web/View.js`). El mecanismo es:
+
+1. **Un solo `<Canvas>` global** contiene el unico WebGLRenderer.
+2. `View` detecta si esta dentro o fuera de un Canvas:
+   - **Fuera** (nuestro caso): renderiza un `<div>` HTML (tracking element) + usa `tunnel-rat` para portar el contenido 3D al Canvas global.
+   - **Dentro**: renderiza directamente como `CanvasView`.
+3. `<View.Port />` se coloca dentro del Canvas global y recibe todos los portales.
+4. En cada frame, `Container` (componente interno) hace:
+   - `getBoundingClientRect()` del div tracking para obtener posicion/tamano
+   - `gl.setViewport(left, bottom, width, height)` — recorta el area de render
+   - `gl.setScissor(left, bottom, width, height)` — activa scissor test
+   - `gl.render(scene, camera)` — renderiza solo esa porcion
+   - Restaura el estado del scissor
+
+Esto significa: **un solo contexto WebGL, un solo renderer, multiples escenas renderizadas secuencialmente en regiones del canvas**.
+
+### 2.2 Implicaciones clave
+
+| Aspecto | Canvas individual (actual) | View compartido (propuesto) |
+|---------|---------------------------|----------------------------|
+| Contextos WebGL | N (13-14) | 1 |
+| Environment maps | N copias | 1 compartido |
+| GPU memory | N * (texturas + env) | 1 * env + texturas compartidas via cache |
+| Draco decoder | N instancias | 1 instancia |
+| OrbitControls | Funciona nativamente | Funciona por viewport (events.connected) |
+| frameloop='demand' | Por Canvas | Global, pero `frames` prop controla por View |
+
+### 2.3 OrbitControls por viewport
+
+Si. `View` conecta los eventos del DOM al tracking element:
+
+```javascript
+// View.js linea 126-131
+rootState.setEvents({ connected: track.current });
 ```
+
+Cada `View` redirige los eventos de puntero a su propio tracking div. `OrbitControls` dentro de un `View` solo responde a eventos sobre ese div. Esto es equivalente al comportamiento actual donde cada Canvas tiene sus propios controles.
+
+### 2.4 frameloop='demand' equivalente
+
+`View` acepta un prop `frames` (por defecto `Infinity`). Para simular `frameloop='demand'`:
+- `frames={1}` — renderiza solo 1 frame (equivalente a un snapshot estatico)
+- `frames={Infinity}` — renderiza siempre (equivalente a `frameloop='always'`)
+
+Para el hover behavior actual (`frameloop={hovered ? 'always' : 'demand'}`), se puede alternar el prop `frames` o usar `useFrame` con invalidacion manual.
+
+---
+
+## 3. Arquitectura propuesta
+
+### 3.1 Diagrama de componentes
+
+```
+App.tsx (o layout root)
+  └─ <Canvas> (UNICO — fullscreen, position:fixed, pointer-events:none)
+       ├─ <View.Port />           ← recibe todos los portales de View
+       └─ (configuracion global: toneMapping, outputColorSpace)
+
+Gallery.tsx
+  └─ filteredModels.map(model =>
+       <ModelCard>
+         <View className="card-viewer">    ← div HTML, tracking element
+           <ModelScene url={...} />
+         </View>
+       </ModelCard>
+     )
+
+ModelModal.tsx
+  └─ <View className="modal-viewer">      ← mismo Canvas global
+       <ModelScene url={...} />
+     </View>
+```
+
+### 3.2 Canvas global — donde colocarlo
+
+El `<Canvas>` debe ser un overlay que cubra toda la ventana, por encima del contenido HTML en z-index pero con `pointer-events: none` para que los clicks pasen al HTML. Los tracking divs de `View` manejan sus propios eventos.
 
 ```tsx
-// Gallery.tsx líneas 188-217
-{loading ? (
-  <div className="gallery-loading">Cargando modelos...</div>
-) : (
-  filteredModels.map(model => <ModelCard ... />)
-)}
+// src/components/SceneCanvas.tsx (nuevo, unico archivo nuevo necesario)
+import { Canvas } from '@react-three/fiber';
+import { View } from '@react-three/drei';
+
+export default function SceneCanvas() {
+  return (
+    <Canvas
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        pointerEvents: 'none',
+      }}
+      eventSource={document.getElementById('root')!}
+      eventPrefix="client"
+      camera={{ position: [0, 0, 5], fov: 40 }}
+      gl={{ antialias: false, powerPreference: 'low-power' }}
+      dpr={1}
+    >
+      <View.Port />
+    </Canvas>
+  );
+}
 ```
 
-Cuando `setLoading(true)` se ejecuta durante un refresh, React reemplaza el
-árbol `filteredModels.map(...)` por `<div className="gallery-loading">`. Todos
-los `<ModelCard>` se desmontan. Cada `<model-viewer>` dentro de ellos libera su
-WebGL context, cancela la descarga en progreso y descarta el GLB de memoria.
-Cuando `setLoading(false)` termina, React remonta todos los `<ModelCard>` desde
-cero y `<model-viewer>` reinicia el ciclo completo de descarga.
+`eventSource` y `eventPrefix="client"` son clave: le dicen a R3F que los eventos vienen del root HTML, no del canvas. Combinado con el `track` de cada `View`, los eventos se rutean correctamente a cada viewport.
 
-El impacto es proporcional al número de modelos. Con 10 modelos de 5MB cada uno,
-un refresh fuerza hasta 50MB de descargas redundantes.
+### 3.3 Cambios en ModelCard.tsx
 
-### 1.2 Flujo actual verificado en el código
-
-```
-EditModelForm.onSave()
-  → setEditingModel(null)
-  → loadModels()                    // Gallery.tsx línea 253
-      → setLoading(true)            // Grid desaparece
-      → Promise.all([...queries])
-      → setLoading(false)           // Grid reaparece, GLBs se re-descargan
-```
-
-```
-UploadForm.onSuccess()
-  → setShowUpload(false)
-  → loadModels()                    // Gallery.tsx línea 243 — mismo problema
-
-handleDelete()
-  → supabase.storage.remove(...)
-  → supabase.from('models').delete()
-  → loadModels()                    // Gallery.tsx línea 151 — mismo problema
-```
-
-Los tres puntos de entrada a `loadModels()` sufren el mismo defecto.
-Solo la llamada desde `init()` (línea 76) es semánticamente correcta al usar `setLoading(true)`.
-
----
-
-## 2. Evaluación de la propuesta: `initialLoading` + `refreshing`
-
-### 2.1 ¿Es la estrategia correcta?
-
-**Sí.** La separación refleja la realidad de dos fases con comportamientos de UI
-distintos:
-
-| Estado | Primera carga | Refresh |
-|--------|--------------|---------|
-| No hay datos previos | Verdadero | Falso — hay datos |
-| El grid debe desaparecer | Sí | No |
-| El usuario espera | Activamente | Pasivamente |
-| GLBs en memoria | Ninguno | Ya cargados |
-
-Mantener ambas fases en un único boolean obliga al componente a elegir el
-comportamiento más destructivo (desmontar el grid) porque no puede distinguir
-entre ellas. La separación elimina esa ambigüedad de forma permanente y limpia.
-
-### 2.2 Análisis del diseño propuesto
-
-```typescript
-const [initialLoading, setInitialLoading] = useState(true);
-const [refreshing, setRefreshing] = useState(false);
-```
-
-**Fortalezas:**
-- `initialLoading` comienza en `true` y solo puede transicionar a `false` una vez.
-  Es un estado unidireccional, lo que elimina la posibilidad de usar erróneamente
-  un spinner inicial en refreshes futuros.
-- `refreshing` no controla si el grid existe. El grid siempre renderiza cuando
-  `initialLoading` es `false`, independientemente de `refreshing`.
-- La separación es legible: el nombre del estado comunica su propósito.
-
-**Riesgo identificado — doble responsabilidad en `loadModels()`:**
-
-La función `loadModels()` necesita saber si es la primera ejecución o un refresh
-para saber qué estado actualizar. La propuesta implica manejar esto con un
-parámetro o con lógica externa. Si no se diseña con cuidado, `loadModels()`
-podría volverse frágil.
-
-**Recomendación**: separar en dos rutas explícitas dentro de la función, usando
-un parámetro booleano que no sea opcional, para forzar que el llamador sea
-consciente de qué tipo de carga está haciendo:
-
-```typescript
-const loadModels = async (isInitial: boolean) => {
-  if (isInitial) {
-    setInitialLoading(true);
-  } else {
-    setRefreshing(true);
-  }
-  try {
-    const [modelsRes, counts, commentCountsData] = await Promise.all([
-      supabase.from('models').select('*').order('created_at', { ascending: false }),
-      fetchLikeCounts(),
-      fetchCommentCounts(),
-    ]);
-    if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
-    setLikeCounts(counts);
-    setCommentCounts(commentCountsData);
-  } catch (err) {
-    console.error('Error loading models:', err);
-  } finally {
-    if (isInitial) {
-      setInitialLoading(false);
-    } else {
-      setRefreshing(false);
-    }
-  }
-};
-```
-
-Llamadas en el código:
-```typescript
-// En init():
-await loadModels(true);
-
-// En onSave, onSuccess, handleDelete:
-loadModels(false);
-```
-
-Este diseño hace imposible confundir los dos tipos de carga porque el parámetro
-es requerido y sin valor por defecto.
-
----
-
-## 3. Race condition en `loadModels()`
-
-### 3.1 ¿Puede ocurrir?
-
-**Sí.** El escenario es factible aunque no frecuente en uso normal:
-
-```
-t=0ms  → Llamada A: setRefreshing(true), lanza Promise.all
-t=50ms → Usuario borra otro modelo
-t=50ms → Llamada B: setRefreshing(true), lanza Promise.all
-t=300ms → Llamada A resuelve: setModels(dataA), setRefreshing(false)
-t=400ms → Llamada B resuelve: setModels(dataB), setRefreshing(false)
-```
-
-El resultado final es `dataB`, que es el más reciente. En este caso específico,
-la carrera es benigna porque Supabase devuelve el estado actual de la base de
-datos en cada query — no hay writes locales que puedan perder. El estado final
-siempre converge al último snapshot de la BD.
-
-Sin embargo, existe un escenario donde la carrera sí deja estado inconsistente:
-
-```
-t=0ms  → Llamada A lanza queries
-t=100ms → Llamada B lanza queries
-t=500ms → Llamada B resuelve primero (red más rápida): setModels(dataB)
-t=600ms → Llamada A resuelve: setModels(dataA)  ← sobreescribe dataB con datos más viejos
-```
-
-Si Supabase responde en orden inverso al de lanzamiento (posible con latencias
-variables), los datos más viejos sobrescriben los más nuevos. El resultado es una
-galería que no refleja la última operación del usuario.
-
-### 3.2 Solución: AbortController + ref de cancelación
-
-La estrategia más limpia en React sin librerías externas es un ref que trackea
-la "versión" de la carga actual. Cualquier llamada más antigua que complete
-después que una más nueva se descarta silenciosamente:
-
-```typescript
-const loadCounterRef = useRef(0);
-
-const loadModels = async (isInitial: boolean) => {
-  // Incrementar contador — este número identifica esta invocación
-  loadCounterRef.current += 1;
-  const thisLoad = loadCounterRef.current;
-
-  if (isInitial) {
-    setInitialLoading(true);
-  } else {
-    setRefreshing(true);
-  }
-
-  try {
-    const [modelsRes, counts, commentCountsData] = await Promise.all([
-      supabase.from('models').select('*').order('created_at', { ascending: false }),
-      fetchLikeCounts(),
-      fetchCommentCounts(),
-    ]);
-
-    // Solo aplicar si esta es todavía la carga más reciente
-    if (loadCounterRef.current !== thisLoad) return;
-
-    if (!modelsRes.error && modelsRes.data) setModels(modelsRes.data);
-    setLikeCounts(counts);
-    setCommentCounts(commentCountsData);
-  } catch (err) {
-    if (loadCounterRef.current !== thisLoad) return;
-    console.error('Error loading models:', err);
-  } finally {
-    // Solo desactivar el spinner si seguimos siendo la carga activa
-    if (loadCounterRef.current === thisLoad) {
-      if (isInitial) {
-        setInitialLoading(false);
-      } else {
-        setRefreshing(false);
-      }
-    }
-  }
-};
-```
-
-Esta técnica — llamada "stale closure cancellation" — es el patrón estándar de
-React para operaciones asíncronas concurrentes sin introducir dependencias
-externas. El ref no dispara re-renders y persiste entre renders, lo que lo hace
-ideal para este propósito.
-
-**Nota sobre AbortController con Supabase:** El cliente de Supabase no expone
-una API de cancelación de queries equivalente a `fetch` con `AbortSignal`. El
-patrón de ref es la alternativa apropiada para este stack.
-
----
-
-## 4. Cambios mínimos en el JSX
-
-El JSX actual tiene una estructura condicional única. La propuesta requiere un
-cambio quirúrgico en dos niveles:
-
-### Estado actual (líneas 188-217):
 ```tsx
-{loading ? (
-  <div className="gallery-loading">Cargando modelos...</div>
-) : filteredModels.length === 0 ? (
-  <div className="gallery-empty">...</div>
-) : (
-  filteredModels.map(model => <ModelCard ... />)
-)}
+// ANTES
+import { Canvas } from '@react-three/fiber';
+// ...
+<div className="card-viewer" onClick={onClick}>
+  {visible ? (
+    <Canvas camera={...} gl={...} dpr={1} frameloop={hovered ? 'always' : 'demand'}>
+      <ModelScene url={modelUrl} ... />
+    </Canvas>
+  ) : (
+    <div>...</div>
+  )}
+</div>
+
+// DESPUES
+import { View } from '@react-three/drei';
+// ...
+<div className="card-viewer" onClick={onClick}>
+  {visible ? (
+    <View style={{ width: '100%', height: '100%' }}>
+      <ModelScene url={modelUrl} autoRotate={hovered} ... />
+    </View>
+  ) : (
+    <div>...</div>
+  )}
+</div>
 ```
 
-### Estado propuesto:
+El IntersectionObserver para `visible` sigue funcionando igual — cuando `visible=false`, el `View` no se monta y no consume frames.
+
+### 3.4 Cambios en ModelModal.tsx
+
 ```tsx
-{initialLoading ? (
-  <div className="gallery-loading">Cargando modelos...</div>
-) : (
-  <>
-    {refreshing && (
-      <div className="gallery-refreshing" aria-live="polite">
-        Actualizando...
-      </div>
-    )}
-    {filteredModels.length === 0 ? (
-      <div className="gallery-empty">...</div>
-    ) : (
-      filteredModels.map(model => <ModelCard ... />)
-    )}
-  </>
-)}
+// ANTES
+<Canvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true }}>
+  <ModelScene ... />
+</Canvas>
+
+// DESPUES
+<View style={{ width: '100%', height: '100%' }} index={100}>
+  <ModelScene ... />
+</View>
 ```
 
-El grid de `ModelCard` siempre está presente cuando `initialLoading` es `false`.
-El indicador `gallery-refreshing` es aditivo — aparece sobre el contenido
-existente sin desplazarlo ni desmontarlo.
+`index={100}` da prioridad de render alta al modal (se renderiza despues = encima en caso de overlap visual).
 
-También hay que ajustar el contador (línea 183):
+**Nota sobre antialias**: El Canvas global se configura una vez. Si el modal necesita antialias y las cards no, hay dos opciones:
+1. Activar antialias globalmente (costo en todas las views)
+2. Dejar antialias off globalmente (las cards ya lo tienen off, el modal pierde calidad)
+
+Recomendacion: dejar `antialias: false` global. El beneficio de un solo contexto supera la perdida de AA en el modal. Si es critico, se puede aplicar FXAA como post-effect solo en la escena del modal.
+
+### 3.5 Cambios en ModelScene.tsx
+
+**Ninguno.** ModelScene no sabe que esta dentro de un Canvas o un View. Sus hijos (Environment, lights, OrbitControls, Model3D) funcionan identicamente dentro de un portal de View.
+
+### 3.6 Cambios en Model3D.tsx
+
+**Ninguno.** `useGLTF` cachea por URL automaticamente. Con un solo Canvas, el cache de three.js es compartido — si dos cards usan el mismo modelo, se carga una sola vez. Esto no cambia con View.
+
+### 3.7 Cambios en Gallery.tsx
+
+Minimos. Solo importar el SceneCanvas y montarlo una vez:
+
 ```tsx
-// Antes:
-{loading ? '...' : `${String(filteredModels.length).padStart(2, '0')} MODELOS`}
-
-// Después:
-{initialLoading ? '...' : `${String(filteredModels.length).padStart(2, '0')} MODELOS`}
+// En el return de Gallery (o mejor, en App.tsx / layout):
+<>
+  <SceneCanvas />
+  {/* ... resto del JSX actual sin cambios ... */}
+</>
 ```
 
----
+### 3.8 SortableModelCard.tsx
 
-## 5. Riesgos arquitecturales adicionales
-
-### 5.1 Riesgo: `initialLoading` nunca llega a `false` si `init()` falla
-
-En el código actual, `init()` llama a `loadModels(true)` que tiene `try/catch/finally`.
-El `finally` garantiza que `setInitialLoading(false)` siempre se ejecute, incluso
-si Supabase falla. Este punto ya está cubierto correctamente por el diseño propuesto
-(y por el fix de `try/catch/finally` del informe de Sebastián del 2026-04-06).
-
-Sin embargo, hay un riesgo residual: si `supabase.auth.getSession()` en `init()`
-(línea 63 del código actual) lanza una excepción no capturada antes de llegar a
-`loadModels()`, el componente queda atascado en `initialLoading: true`. Se recomienda
-envolver todo el cuerpo de `init()` en un `try/catch/finally` que garantice
-`setInitialLoading(false)` como fallback de último recurso.
-
-### 5.2 Riesgo: el indicador `gallery-refreshing` necesita CSS que no bloquee interacción
-
-El div de actualización no debe ocupar espacio en el grid ni desplazar las cards.
-Debe implementarse con `position: fixed` o `position: absolute` sobre el grid,
-o como un banner compacto fuera del flujo de grid. Si se implementa dentro del
-flujo normal del DOM, podría desplazar el grid y causar layout shift.
-
-### 5.3 Riesgo menor: `refreshing` podría quedar `true` si el componente se desmonta
-
-El patrón `isMounted` ya existe en `useEffect` para el init. Si `loadModels()` se
-llama desde un evento de usuario y el componente se desmonta antes de que resuelva,
-`setRefreshing(false)` dispara un setState en componente desmontado. Esto produce
-un warning en React 18 (aunque no rompe la app). La solución es verificar `isMounted`
-antes de todos los setState en `loadModels()`, o usar el mismo ref de cancelación
-descrito en la sección 3.2 que ya previene este caso como efecto secundario.
-
-### 5.4 Consideración de rendimiento: likes y comments en cada refresh
-
-`loadModels()` actualmente siempre recarga `fetchLikeCounts()` y `fetchCommentCounts()`
-junto con los modelos. Para refreshes post-edición/borrado, esto es correcto porque
-el modelo puede haber cambiado. Sin embargo, en un escenario de escala futura, podría
-ser útil separar la recarga de contadores de la recarga de metadatos de modelos.
-Este punto está fuera del scope del problema actual pero es una deuda técnica conocida.
+**Sin cambios.** Es un wrapper de DnD que delega a ModelCard. La transformacion CSS (translate) del drag mueve el div tracking, y View recalcula su posicion via `getBoundingClientRect()` en cada frame.
 
 ---
 
-## 6. Recomendación final
+## 4. Riesgos y mitigaciones
 
-### Adoptar la separación `initialLoading` / `refreshing`: SÍ
+### 4.1 Scroll performance
 
-La propuesta es correcta, proporcionada al problema y no introduce complejidad
-innecesaria. Resuelve la causa raíz del problema de recarga sin afectar la lógica
-de negocio existente.
+`View` llama `getBoundingClientRect()` en cada frame para cada viewport visible. Con 13 views esto son 13 layout queries por frame. En la practica esto no es un problema porque:
+- `getBoundingClientRect()` es muy rapido en Chrome (~0.01ms)
+- El IntersectionObserver ya limita las views montadas a las visibles
 
-### Implementar stale closure cancellation: SÍ
+### 4.2 Z-ordering del Canvas overlay
 
-El costo de implementación es mínimo (un `useRef` y dos líneas de guarda) y el
-beneficio es eliminar un vector de corrupción de estado que, aunque poco frecuente
-en uso normal, puede ocurrir y es difícil de diagnosticar cuando aparece.
+El Canvas fixed debe estar por debajo de los modales HTML (AuthModal, UploadForm, etc.) pero los Views del modal 3D deben renderizar correctamente. Solucion: el modal 3D usa View (que renderiza dentro del Canvas), pero el overlay/backdrop del modal es HTML puro con `z-index` mayor que el Canvas.
 
-### Cambios mínimos necesarios
+```css
+/* Canvas global */
+.scene-canvas { position: fixed; z-index: 1; pointer-events: none; }
 
-1. Reemplazar `const [loading, setLoading]` por dos estados separados.
-2. Agregar `loadCounterRef` para cancelación de stale loads.
-3. Refactorizar `loadModels()` con el parámetro `isInitial: boolean`.
-4. Actualizar las tres llamadas a `loadModels()` (líneas 76, 151, 243, 253).
-5. Ajustar el JSX del grid y del contador.
-6. Agregar CSS mínimo para `.gallery-refreshing` que no genere layout shift.
+/* Modales HTML */
+.modal-overlay { z-index: 1000; }
+```
 
-**Total de archivos afectados: 1** — solo `Gallery.tsx`. No hay cambios en
-Supabase, esquema de BD, ni en componentes hijos. El scope es quirúrgico.
+El View dentro del modal renderiza en el Canvas (z-index: 1), pero el usuario ve el resultado "a traves" del div tracking que esta dentro del modal (z-index: 1000). Visualmente funciona porque el Canvas es transparent donde no hay Views renderizando (scissor test limpia cada region).
+
+### 4.3 Disposal de recursos
+
+Con Canvas individuales, al desmontar un ModelCard se destruye su Canvas y se liberan texturas. Con View, el desmontaje del View limpia su escena virtual pero las texturas cargadas por `useGLTF` permanecen en el cache global de three.js.
+
+Mitigacion: `useGLTF` ya tiene un sistema de cache. Si se necesita liberar memoria agresivamente, se puede llamar `useGLTF.clear()` o implementar un LRU cache manual. Para 13 modelos esto no es urgente.
+
+### 4.4 Hot reload en desarrollo
+
+El Canvas global persiste entre hot reloads de componentes hijos. Esto es una mejora sobre el estado actual donde cada hot reload de ModelCard destruye y recrea su Canvas.
 
 ---
 
-## Referencias de código relevantes
+## 5. Plan de migracion por fases
 
-- `Gallery.tsx` línea 20 — estado `loading` actual
-- `Gallery.tsx` líneas 38-54 — función `loadModels()` actual
-- `Gallery.tsx` líneas 59-96 — `useEffect` de init, patrón `isMounted` existente
-- `Gallery.tsx` líneas 151, 243, 253 — tres puntos de llamada a `loadModels()`
-- `Gallery.tsx` líneas 183, 188-217 — JSX afectado por el estado `loading`
-- `docs/informes/2026-04-06-auditoria-loading-infinito.md` — contexto de `try/catch/finally`
+### Fase 1: Canvas global + View en cards (scope minimo)
+1. Crear `SceneCanvas.tsx` con Canvas + View.Port
+2. Montar SceneCanvas en App.tsx o layout
+3. Reemplazar `<Canvas>` por `<View>` en ModelCard.tsx
+4. Verificar que OrbitControls y hover behavior funcionan
+5. **Resultado**: de 13+ contextos a 1
+
+### Fase 2: Modal integrado
+6. Reemplazar `<Canvas>` por `<View>` en ModelModal.tsx
+7. Ajustar z-index y verificar que el modal renderiza sobre las cards
+8. **Resultado**: 0 contextos adicionales al abrir modal
+
+### Fase 3: Optimizaciones (opcional, post-validacion)
+9. Implementar `frames` prop para pausar Views no visibles
+10. Evaluar FXAA selectivo para el modal si se necesita AA
+11. Considerar progressive loading de texturas
+
+---
+
+## 6. Metricas de exito
+
+| Metrica | Antes | Despues esperado |
+|---------|-------|-----------------|
+| Contextos WebGL | 13-14 | 1 |
+| `Context Lost` errors | 30+ | 0 |
+| Environment maps en memoria | 13 | 1 |
+| Modelos PBR grandes cargan | No (VRAM agotada) | Si |
+| GPU memory estimada | ~13x base | ~1x base + texturas |
+
+---
+
+## 7. Archivos a modificar
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/components/SceneCanvas.tsx` | **NUEVO** — Canvas global + View.Port |
+| `src/components/ModelCard.tsx` | `Canvas` → `View` |
+| `src/components/ModelModal.tsx` | `Canvas` → `View` |
+| `src/App.tsx` (o layout) | Montar `<SceneCanvas />` |
+| `src/components/ModelScene.tsx` | Sin cambios |
+| `src/components/Model3D.tsx` | Sin cambios |
+| `src/components/Gallery.tsx` | Sin cambios |
+| `src/components/SortableModelCard.tsx` | Sin cambios |

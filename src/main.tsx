@@ -6,7 +6,7 @@ import './styles/global.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter basename="/galeria-3d-clase">
+    <BrowserRouter>
       <App />
     </BrowserRouter>
   </StrictMode>
