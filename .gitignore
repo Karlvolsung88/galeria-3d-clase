@@ -1,7 +1,5 @@
 # build output
 dist/
-# generated types
-.astro/
 
 # dependencies
 node_modules/
@@ -9,20 +7,17 @@ node_modules/
 # logs
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
-
 
 # environment variables
 .env
 .env.production
 
-# macOS-specific files
+# macOS
 .DS_Store
 
-# GLB models (stored in Supabase)
-public/models/*.glb
-public/models/*.gltf
-
-# jetbrains setting folder
+# jetbrains
 .idea/
+
+# typescript build info
+tsconfig.tsbuildinfo

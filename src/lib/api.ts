@@ -1,4 +1,4 @@
-/** API client — reemplaza Supabase con llamadas al droplet DigitalOcean */
+/** API client — llamadas REST al backend Express en DigitalOcean */
 
 const API_URL = '/api';
 
