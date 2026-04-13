@@ -12,7 +12,8 @@ Galería web interactiva de modelos 3D creados por estudiantes de la Universidad
 | **Storage** | DigitalOcean Spaces (S3-compatible CDN) |
 | **Auth** | JWT custom (bcryptjs + jsonwebtoken) |
 | **Styling** | CSS custom (dark + neubrutalism) |
-| **Deploy** | Nginx en DigitalOcean Droplet |
+| **Deploy** | Nginx + SSL (Let's Encrypt) en DigitalOcean Droplet |
+| **Dominio** | `ceopacademia.org` (Hostinger → NS DigitalOcean) |
 
 ## Arquitectura
 
@@ -24,11 +25,11 @@ Galería web interactiva de modelos 3D creados por estudiantes de la Universidad
 │  /api/*  → Express API (JWT auth)                       │
 │  /cdn/*  → Nginx proxy → DO Spaces CDN                  │
 └─────────────────┬───────────────────────────────────────┘
-                  │ HTTP
+                  │ HTTPS
 ┌─────────────────▼───────────────────────────────────────┐
-│  DigitalOcean Droplet (159.203.189.167)                 │
+│  DigitalOcean Droplet — ceopacademia.org                │
 │  ┌─────────────────────────────────────────────┐        │
-│  │  Nginx (puerto 80)                          │        │
+│  │  Nginx (80 → 301 HTTPS, 443 SSL)           │        │
 │  │  ├─ /        → static frontend (dist/)      │        │
 │  │  ├─ /api/    → proxy → Node.js :3000        │        │
 │  │  └─ /cdn/    → proxy → DO Spaces CDN        │        │
@@ -60,6 +61,8 @@ Galería web interactiva de modelos 3D creados por estudiantes de la Universidad
 - Galería con grid responsivo y filtros por categoría (personaje, vehículo, criatura, objeto)
 - Visor 3D interactivo con React Three Fiber (orbit, zoom, pan)
 - Thumbnails 720x405 (16:9, calidad Sketchfab) generados client-side
+- Loading estilo Sketchfab: thumbnail como placeholder + crossfade al modelo 3D
+- Code splitting: Three.js (~847KB) lazy-loaded on-demand
 - Sistema de likes y comentarios
 - Drag & drop para reordenar modelos (admin)
 - Upload de modelos GLB con preview 3D
@@ -71,11 +74,11 @@ Galería web interactiva de modelos 3D creados por estudiantes de la Universidad
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173 (proxy a droplet)
+npm run dev          # http://localhost:5173 (proxy a ceopacademia.org)
 npm run build        # Build producción en dist/
 ```
 
-El proxy de Vite redirige `/api` y `/cdn` al droplet (159.203.189.167).
+El proxy de Vite redirige `/api` y `/cdn` a `https://ceopacademia.org`.
 
 ## Deploy a producción
 

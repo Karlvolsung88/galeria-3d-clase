@@ -7,12 +7,14 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://159.203.189.167',
+        target: 'https://ceopacademia.org',
         changeOrigin: true,
+        secure: true,
       },
       '/cdn': {
-        target: 'http://159.203.189.167',
+        target: 'https://ceopacademia.org',
         changeOrigin: true,
+        secure: true,
       },
     },
   },

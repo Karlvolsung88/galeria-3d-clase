@@ -31,6 +31,15 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 - **Documentación de deploy** — Guía completa con credenciales, estructura, endpoints API, comandos de monitoreo.
   - Archivos: `docs/deploy.md`
 
+- **Dominio ceopacademia.org + SSL** — Dominio conectado desde Hostinger (nameservers transferidos a DigitalOcean). Registros A para `@` y `www` → 159.203.189.167. SSL con Let's Encrypt (certbot), auto-renovación, HTTP redirige a HTTPS.
+  - Nginx: `server_name ceopacademia.org www.ceopacademia.org`
+
+- **Code splitting Three.js** — Three.js (~847KB) se carga on-demand con `React.lazy()` en vez de en la carga inicial. Carga inicial reducida de ~1.3MB a ~317KB. ModelModal, UploadForm, EditModelForm y ThumbnailGenerator son lazy-loaded.
+  - Archivos: `Gallery.tsx` (lazy imports), `ModelModal.tsx`, `ModelScene.tsx`
+
+- **Loading estilo Sketchfab en ModelModal** — Al abrir un modelo, se muestra el thumbnail como placeholder con blur + spinner. Cuando el GLB termina de cargar, el Canvas 3D hace crossfade sobre el thumbnail (transición 0.6s). Elimina el fondo negro vacío durante la carga.
+  - Archivos: `ModelModal.tsx`, `ModelScene.tsx` (onLoaded callback), `global.css` (crossfade CSS)
+
 ### Mejorado
 
 - **CSS card-viewer 16:9** — Cambio de `height: 320px` fijo a `aspect-ratio: 16/9` para que las cards sean responsive y coincidan con el ratio de los thumbnails.

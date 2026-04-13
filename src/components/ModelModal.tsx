@@ -1,7 +1,8 @@
-import { useEffect, useCallback, useState } from 'react';
-import { Canvas } from '@react-three/fiber';
-import ModelScene from './ModelScene';
+import { useEffect, useCallback, useState, lazy, Suspense } from 'react';
 import { fetchComments, addComment, deleteComment, type CommentRow } from '../lib/api';
+
+const LazyCanvas = lazy(() => import('@react-three/fiber').then(m => ({ default: m.Canvas })));
+const ModelScene = lazy(() => import('./ModelScene'));
 
 interface ModelModalProps {
   modelId: string;
@@ -11,6 +12,7 @@ interface ModelModalProps {
   description: string;
   tags: string[];
   modelUrl: string;
+  thumbnailUrl?: string | null;
   userId: string | null;
   isAdmin: boolean;
   likeCount: number;
@@ -47,13 +49,14 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function ModelModal({
-  modelId, title, student, category, description, tags, modelUrl,
+  modelId, title, student, category, description, tags, modelUrl, thumbnailUrl,
   userId, isAdmin, likeCount, isLiked, onLike, onRequestAuth, onClose,
 }: ModelModalProps) {
   const [comments, setComments] = useState<CommentRow[]>([]);
   const [newComment, setNewComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [likeAnimating, setLikeAnimating] = useState(false);
+  const [modelLoaded, setModelLoaded] = useState(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -110,16 +113,35 @@ export default function ModelModal({
       <div className="modal">
         <div className="modal-viewer-wrap">
           <button className="modal-close" onClick={onClose} aria-label="Cerrar modal">✕</button>
-          <Canvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true }}>
-            <ModelScene
-              url={modelUrl}
-              autoRotate={false}
-              enableZoom={true}
-              enablePan={true}
-              enableRotate={true}
-              showFloor={true}
-            />
-          </Canvas>
+
+          {/* Thumbnail placeholder (estilo Sketchfab) */}
+          {thumbnailUrl && (
+            <div className={`modal-thumb-placeholder ${modelLoaded ? 'hidden' : ''}`}>
+              <img src={thumbnailUrl} alt={title} />
+              <div className="modal-loading-spinner">
+                <div className="spinner" />
+                <span>Cargando modelo 3D...</span>
+              </div>
+            </div>
+          )}
+
+          {/* Canvas 3D con fade-in */}
+          <div className={`modal-canvas-wrap ${modelLoaded ? 'loaded' : ''}`}>
+            <Suspense fallback={null}>
+              <LazyCanvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true }}>
+                <ModelScene
+                  url={modelUrl}
+                  autoRotate={false}
+                  enableZoom={true}
+                  enablePan={true}
+                  enableRotate={true}
+                  showFloor={true}
+                  onLoaded={() => setModelLoaded(true)}
+                />
+              </LazyCanvas>
+            </Suspense>
+          </div>
+
           <div className="controls-hint">
             <span>LMB: Orbitar</span>
             <span>RMB: Paneo</span>
