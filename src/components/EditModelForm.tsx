@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import ModelScene from './ModelScene';
-import { supabase } from '../lib/supabase';
-import type { ModelRow } from '../lib/supabase';
+import { updateModel, type ModelRow } from '../lib/api';
 
 interface EditModelFormProps {
   model: ModelRow;
@@ -54,26 +53,14 @@ export default function EditModelForm({ model, onSave, onClose }: EditModelFormP
       .map((t) => t.trim())
       .filter(Boolean);
 
-    const { error: updateError } = await supabase
-      .from('models')
-      .update({
-        title,
-        student,
-        category,
-        description,
-        tags,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', model.id);
-
-    setLoading(false);
-
-    if (updateError) {
-      setError('Error al guardar: ' + updateError.message);
-      return;
+    try {
+      await updateModel(model.id, { title, student, category, description, tags });
+      setLoading(false);
+      onSave();
+    } catch (err: any) {
+      setLoading(false);
+      setError('Error al guardar: ' + err.message);
     }
-
-    onSave();
   };
 
   return (

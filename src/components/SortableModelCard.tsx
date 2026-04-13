@@ -10,6 +10,7 @@ interface SortableModelCardProps {
   category: string;
   tags: string[];
   modelUrl: string;
+  thumbnailUrl?: string | null;
   canEdit: boolean;
   likeCount: number;
   commentCount: number;

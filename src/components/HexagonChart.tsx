@@ -1,4 +1,4 @@
-import { SKILLS, type StudentSkill } from '../lib/supabase';
+import { SKILLS, type StudentSkill } from '../lib/api';
 
 interface Props {
   skills: StudentSkill[];

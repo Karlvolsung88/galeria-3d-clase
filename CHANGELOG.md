@@ -7,6 +7,57 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Agregado
+
+- **Migración completa Supabase → DigitalOcean** — Backend propio reemplaza Supabase por completo. Nuevo stack: Express + PostgreSQL 16 + DigitalOcean Spaces + JWT auth. Login responde en <100ms (Supabase colgaba indefinidamente). Bundle reducido ~200KB al eliminar SDK Supabase.
+  - **API REST**: `src/lib/api.ts` — cliente con JWT token management, auth state listeners, todas las funciones CRUD
+  - **Backend**: Express en droplet (PM2), rutas para auth, models, profiles, likes, comments, skills, thumbnails
+  - **Storage**: GLB files y thumbnails en DO Spaces, servidos via Nginx proxy `/cdn/`
+  - **Auth**: JWT custom con bcryptjs (7 días expiración), roles admin/student
+  - **Datos migrados**: 8 perfiles, 13 modelos, 22 likes, 3 comentarios, 42 skills
+  - **Archivos migrados**: 13 GLBs + 13 thumbnails de Supabase Storage a DO Spaces (~55MB)
+  - Archivos nuevos: `src/lib/api.ts`
+  - Archivos actualizados: todos los componentes (imports cambiados de supabase.ts a api.ts)
+
+- **Thumbnails calidad Sketchfab (720x405)** — Canvas de generación a 720x405px (16:9, mismo ratio que Sketchfab) con dpr=2 y WebP 0.85. Thumbnails anteriores eran de 1-2KB (generados cuando el login estaba roto).
+  - Archivos: `ThumbnailGenerator.tsx`, `ThumbnailCapture.tsx`
+
+- **Botón admin "Regenerar Thumbnails"** — Permite regenerar todos los thumbnails desde la galería (no solo los faltantes). Prop `regenerateAll` en ThumbnailGenerator.
+  - Archivos: `Gallery.tsx`, `ThumbnailGenerator.tsx`
+
+- **Proxy CDN en Nginx** — Ruta `/cdn/` proxy reverso a DO Spaces CDN. Evita problemas de CORS con Three.js. Las URLs de modelos son relativas (`/cdn/models/...`).
+  - Archivos: Nginx config en droplet, `vite.config.ts` (proxy dev)
+
+- **Documentación de deploy** — Guía completa con credenciales, estructura, endpoints API, comandos de monitoreo.
+  - Archivos: `docs/deploy.md`
+
+### Mejorado
+
+- **CSS card-viewer 16:9** — Cambio de `height: 320px` fijo a `aspect-ratio: 16/9` para que las cards sean responsive y coincidan con el ratio de los thumbnails.
+  - Archivos: `global.css`
+
+- **Iluminación de thumbnails** — Dos luces direccionales, environment intensity 0.5, ambient 0.2 para mejor calidad de captura.
+  - Archivos: `ThumbnailGenerator.tsx`
+
+### Corregido
+
+- **Login Supabase colgaba indefinidamente** — `signInWithPassword` retornaba HTTP 200 pero el SDK JS nunca resolvía la Promise. Causa raíz nunca identificada en el SDK. Solución: reemplazar Supabase completamente con JWT custom.
+
+- **ThumbnailCapture disparaba antes de cargar modelo** — ThumbnailCapture estaba fuera de Suspense, useFrame contaba frames antes de que el GLB cargara. Fix: mover dentro de `<Suspense>` junto a `<Model3D>`.
+  - Archivos: `ThumbnailGenerator.tsx`, `ThumbnailCapture.tsx`
+
+### Eliminado
+
+- **Dependencia de Supabase** — `@supabase/supabase-js` ya no se usa. `src/lib/supabase.ts` reemplazado por `src/lib/api.ts`.
+
+### Técnico
+
+- **Infraestructura DigitalOcean** — Droplet Ubuntu 24.04 (159.203.189.167), Nginx, PM2, PostgreSQL 16, DO Spaces (galeria-3d-files, nyc3).
+
+---
+
+## [Unreleased - pre migration]
+
 ### Corregido
 
 - **Reordenamiento drag-and-drop no guardaba** — `upsert` disparaba la política INSERT de RLS (error 42501) porque PostgreSQL evalúa INSERT antes de resolver ON CONFLICT. Fix: cambiar a `update` individuales con `Promise.all`, que solo dispara la política UPDATE permitida para admin.

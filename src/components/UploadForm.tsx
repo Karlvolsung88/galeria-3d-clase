@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import ModelScene from './ModelScene';
-import { supabase } from '../lib/supabase';
+import ThumbnailCapture from './ThumbnailCapture';
+import { createModel } from '../lib/api';
 
 interface UploadFormProps {
   onSuccess: () => void;
@@ -27,6 +28,7 @@ export default function UploadForm({ onSuccess, onClose }: UploadFormProps) {
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const thumbnailBlobRef = useRef<Blob | null>(null);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -69,48 +71,24 @@ export default function UploadForm({ onSuccess, onClose }: UploadFormProps) {
     setError('');
 
     try {
-      // 1. Upload file to Supabase Storage
       setProgress('Subiendo archivo...');
-      const fileName = `${Date.now()}-${file.name.replace(/\s+/g, '-')}`;
-      const { error: uploadError } = await supabase.storage
-        .from('models')
-        .upload(fileName, file, {
-          contentType: 'model/gltf-binary',
-          upsert: false,
-        });
 
-      if (uploadError) throw new Error('Error al subir archivo: ' + uploadError.message);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('title', title);
+      formData.append('student', student);
+      formData.append('category', category);
+      formData.append('description', description || `Modelo 3D creado por ${student}`);
 
-      // 2. Get public URL
-      const { data: urlData } = supabase.storage
-        .from('models')
-        .getPublicUrl(fileName);
+      const tags = tagsInput.split(',').map((t) => t.trim()).filter(Boolean);
+      formData.append('tags', JSON.stringify(tags.length > 0 ? tags : ['GLB', 'Blender']));
 
-      const fileUrl = urlData.publicUrl;
+      if (thumbnailBlobRef.current) {
+        formData.append('thumbnail', thumbnailBlobRef.current, 'thumb.webp');
+      }
 
-      // 3. Insert metadata into database
-      setProgress('Guardando metadata...');
-      const tags = tagsInput
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean);
-
-      // Get current user
-      const { data: { session } } = await supabase.auth.getSession();
-
-      const { error: insertError } = await supabase.from('models').insert({
-        title,
-        student,
-        category,
-        description: description || `Modelo 3D creado por ${student}`,
-        tags: tags.length > 0 ? tags : ['GLB', 'Blender'],
-        file_name: fileName,
-        file_url: fileUrl,
-        file_size: file.size,
-        user_id: session?.user?.id || null,
-      });
-
-      if (insertError) throw new Error('Error al guardar: ' + insertError.message);
+      setProgress('Guardando...');
+      await createModel(formData);
 
       setProgress('');
       onSuccess();
@@ -145,7 +123,7 @@ export default function UploadForm({ onSuccess, onClose }: UploadFormProps) {
           >
             {previewUrl ? (
               <>
-                <Canvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true }} style={{ width: '100%', height: '100%' }}>
+                <Canvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true, preserveDrawingBuffer: true }} style={{ width: '100%', height: '100%' }}>
                   <ModelScene
                     url={previewUrl}
                     autoRotate={true}
@@ -154,6 +132,7 @@ export default function UploadForm({ onSuccess, onClose }: UploadFormProps) {
                     enableRotate={true}
                     showFloor={true}
                   />
+                  <ThumbnailCapture onCapture={(blob) => { thumbnailBlobRef.current = blob; }} />
                 </Canvas>
                 <div className="upload-file-name">
                   {file?.name} ({((file?.size || 0) / 1024 / 1024).toFixed(1)} MB)

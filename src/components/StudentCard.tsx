@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import HexagonChart from './HexagonChart';
-import { updateStudentLinks, deleteStudentSkills, deleteStudentProfile, type StudentWithSkills } from '../lib/supabase';
+import { updateStudentLinks, deleteStudentSkills, deleteStudentProfile, type StudentWithSkills } from '../lib/api';
 
 interface Props {
   student: StudentWithSkills;

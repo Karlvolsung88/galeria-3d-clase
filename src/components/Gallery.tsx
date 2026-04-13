@@ -2,14 +2,19 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
-import { supabase, getSessionSafe, getUserProfile, fetchLikeCounts, fetchCommentCounts, fetchUserLikes, toggleLike, updateModelOrder } from '../lib/supabase';
-import type { ModelRow, Profile } from '../lib/supabase';
+import {
+  initAuth, onAuthStateChange, getMe,
+  fetchModels, fetchLikeCounts, fetchCommentCounts, fetchUserLikes, toggleLike,
+  updateModelOrder, deleteModel,
+  type ModelRow, type Profile,
+} from '../lib/api';
 import SortableModelCard from './SortableModelCard';
 import ModelCard from './ModelCard';
 import ModelModal from './ModelModal';
 import UploadForm from './UploadForm';
 import EditModelForm from './EditModelForm';
 import AuthModal from './AuthModal';
+import ThumbnailGenerator from './ThumbnailGenerator';
 
 const categories = [
   { key: 'all', label: 'Todos' },
@@ -21,8 +26,6 @@ const categories = [
 
 export default function Gallery() {
   const [models, setModels] = useState<ModelRow[]>([]);
-  // initialLoading: solo true en la primera carga — controla el spinner grande
-  // refreshing: true durante actualizaciones post-CRUD — el grid NO se desmonta
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
@@ -38,9 +41,9 @@ export default function Gallery() {
   const [userLikes, setUserLikes] = useState<Set<string>>(new Set());
   const [reorderMode, setReorderMode] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [showThumbGen, setShowThumbGen] = useState(false);
+  const [thumbRegenAll, setThumbRegenAll] = useState(false);
   const modalCounter = useRef(0);
-  // Versión para cancelar race conditions — si una llamada stale resuelve tarde,
-  // compara su versión con la actual y descarta el setState si no coincide
   const loadVersionRef = useRef(0);
 
   const isLoggedIn = !!userId;
@@ -51,8 +54,6 @@ export default function Gallery() {
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
   );
 
-  // isInitial=true → primera carga (muestra spinner grande, puede desmontar grid)
-  // isInitial=false → refresh post-CRUD (grid permanece montado, indicador sutil)
   const loadModels = useCallback(async (isInitial = false) => {
     const version = ++loadVersionRef.current;
 
@@ -63,20 +64,13 @@ export default function Gallery() {
     }
 
     try {
-      let modelsQuery = supabase.from('models').select('*').order('sort_order', { ascending: true });
-      const [modelsRes, counts, commentCountsData] = await Promise.all([
-        modelsQuery,
+      const [modelsData, counts, commentCountsData] = await Promise.all([
+        fetchModels(),
         fetchLikeCounts(),
         fetchCommentCounts(),
       ]);
-      // Fallback: si sort_order falla (columna no cacheada por PostgREST), usar created_at
-      let finalModels = modelsRes;
-      if (modelsRes.error) {
-        finalModels = await supabase.from('models').select('*').order('created_at', { ascending: false });
-      }
-      // Descartar si una llamada más reciente ya tomó el control
       if (loadVersionRef.current !== version) return;
-      if (!finalModels.error && finalModels.data) setModels(finalModels.data);
+      setModels(modelsData);
       setLikeCounts(counts);
       setCommentCounts(commentCountsData);
     } catch (err) {
@@ -112,16 +106,16 @@ export default function Gallery() {
 
     const init = async () => {
       try {
-        const { data: { session } } = await getSessionSafe();
+        const { user, profile: p } = await initAuth();
         if (!isMounted) return;
 
-        if (session) {
-          setUserId(session.user.id);
-          const [p, likes] = await Promise.all([
-            getUserProfile(),
-            fetchUserLikes(session.user.id),
-          ]);
-          if (isMounted) { setProfile(p); setUserLikes(likes); }
+        if (user) {
+          setUserId(user.id);
+          setProfile(p);
+          try {
+            const likes = await fetchUserLikes();
+            if (isMounted) setUserLikes(new Set(likes));
+          } catch { /* not logged in or error */ }
         }
 
         await loadModels(true);
@@ -131,26 +125,33 @@ export default function Gallery() {
       }
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+    const unsub = onAuthStateChange(async (user) => {
       if (!isMounted) return;
-      getSessionSafe().then(({ data: { session } }) => {
-        if (!isMounted) return;
-        if (session) {
-          setUserId(session.user.id);
-          getUserProfile().then(p => { if (isMounted) setProfile(p); });
-          fetchUserLikes(session.user.id).then(l => { if (isMounted) setUserLikes(l); });
-        } else {
-          setUserId(null); setProfile(null); setUserLikes(new Set());
-        }
-      });
+      if (user) {
+        setUserId(user.id);
+        const p = await getMe();
+        if (isMounted) setProfile(p);
+        try {
+          const likes = await fetchUserLikes();
+          if (isMounted) setUserLikes(new Set(likes));
+        } catch { /* ignore */ }
+      } else {
+        setUserId(null); setProfile(null); setUserLikes(new Set());
+      }
     });
 
     init();
 
-    return () => { isMounted = false; subscription.unsubscribe(); };
+    return () => { isMounted = false; unsub(); };
   }, [loadModels]);
 
-  // Can this user edit/delete a given model?
+  // Auto-generar thumbnails si el admin carga y hay modelos sin thumbnail
+  useEffect(() => {
+    if (!isAdmin || initialLoading || models.length === 0) return;
+    const missing = models.some((m) => !m.thumbnail_url);
+    if (missing) setShowThumbGen(true);
+  }, [isAdmin, initialLoading, models]);
+
   const canEdit = (model: ModelRow): boolean => {
     if (!userId) return false;
     if (isAdmin) return true;
@@ -184,7 +185,7 @@ export default function Gallery() {
       [modelId]: (prev[modelId] || 0) + (currentlyLiked ? -1 : 1),
     }));
 
-    toggleLike(modelId, userId, currentlyLiked).catch(() => {
+    toggleLike(modelId).catch(() => {
       // Revert on error
       setUserLikes((prev) => {
         const next = new Set(prev);
@@ -200,8 +201,7 @@ export default function Gallery() {
   };
 
   const handleDelete = async (model: ModelRow) => {
-    await supabase.storage.from('models').remove([model.file_name]);
-    await supabase.from('models').delete().eq('id', model.id);
+    await deleteModel(model.id);
     setDeleteConfirm(null);
     loadModels();
   };
@@ -222,13 +222,21 @@ export default function Gallery() {
 
         <div className="filters-right">
           {isAdmin && (
-            <button
-              className={`filter-btn reorder-btn ${reorderMode ? 'active' : ''}`}
-              onClick={() => setReorderMode((r) => !r)}
-              title={activeFilter !== 'all' ? 'Cambia a "Todos" para reordenar' : ''}
-            >
-              {reorderMode ? '✓ Fin reordenar' : '↕ Reordenar'}
-            </button>
+            <>
+              <button
+                className={`filter-btn reorder-btn ${reorderMode ? 'active' : ''}`}
+                onClick={() => setReorderMode((r) => !r)}
+                title={activeFilter !== 'all' ? 'Cambia a "Todos" para reordenar' : ''}
+              >
+                {reorderMode ? '✓ Fin reordenar' : '↕ Reordenar'}
+              </button>
+              <button
+                className="filter-btn"
+                onClick={() => { setThumbRegenAll(true); setShowThumbGen(true); }}
+              >
+                🖼 Regenerar Thumbnails
+              </button>
+            </>
           )}
           {isLoggedIn && (
             <button
@@ -241,7 +249,7 @@ export default function Gallery() {
         </div>
       </div>
 
-      {/* Counter — indicador sutil de refresh junto al conteo */}
+      {/* Counter */}
       <div style={{ padding: '16px 48px 0', display: 'flex', alignItems: 'center', gap: '12px' }}>
         <span className="counter">
           {initialLoading ? '...' : `${String(filteredModels.length).padStart(2, '0')} MODELOS`}
@@ -257,7 +265,7 @@ export default function Gallery() {
         )}
       </div>
 
-      {/* Grid — solo se desmonta en initialLoading, nunca en refreshing */}
+      {/* Grid */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <div className="gallery-grid">
           {initialLoading ? (
@@ -280,6 +288,7 @@ export default function Gallery() {
                   category={model.category}
                   tags={model.tags}
                   modelUrl={model.file_url}
+                  thumbnailUrl={model.thumbnail_url}
                   canEdit={canEdit(model)}
                   likeCount={likeCounts[model.id] || 0}
                   commentCount={commentCounts[model.id] || 0}
@@ -300,6 +309,7 @@ export default function Gallery() {
                 category={model.category}
                 tags={model.tags}
                 modelUrl={model.file_url}
+                thumbnailUrl={model.thumbnail_url}
                 canEdit={canEdit(model)}
                 likeCount={likeCounts[model.id] || 0}
                 commentCount={commentCounts[model.id] || 0}
@@ -314,7 +324,6 @@ export default function Gallery() {
         </div>
       </DndContext>
 
-      {/* Modal viewer */}
       {selectedModel && (
         <ModelModal
           key={`modal-${modalCounter.current}`}
@@ -335,7 +344,6 @@ export default function Gallery() {
         />
       )}
 
-      {/* Upload form */}
       {showUpload && (
         <UploadForm
           onSuccess={() => { setShowUpload(false); loadModels(); }}
@@ -343,7 +351,6 @@ export default function Gallery() {
         />
       )}
 
-      {/* Edit form */}
       {editingModel && (
         <EditModelForm
           key={editingModel.id}
@@ -353,7 +360,6 @@ export default function Gallery() {
         />
       )}
 
-      {/* Auth modal */}
       {showAuth && (
         <AuthModal
           onSuccess={() => setShowAuth(false)}
@@ -361,7 +367,6 @@ export default function Gallery() {
         />
       )}
 
-      {/* Delete confirmation */}
       {deleteConfirm && (
         <div
           className="modal-overlay active"
@@ -395,6 +400,10 @@ export default function Gallery() {
             </div>
           </div>
         </div>
+      )}
+
+      {showThumbGen && (
+        <ThumbnailGenerator regenerateAll={thumbRegenAll} onDone={() => { setShowThumbGen(false); setThumbRegenAll(false); loadModels(); }} />
       )}
     </>
   );

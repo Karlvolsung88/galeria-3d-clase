@@ -1,6 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
-import { Canvas } from '@react-three/fiber';
-import ModelScene from './ModelScene';
+import { useState } from 'react';
 
 interface ModelCardProps {
   title: string;
@@ -8,6 +6,7 @@ interface ModelCardProps {
   category: string;
   tags: string[];
   modelUrl: string;
+  thumbnailUrl?: string | null;
   canEdit: boolean;
   likeCount: number;
   commentCount: number;
@@ -37,7 +36,7 @@ export default function ModelCard({
   student,
   category,
   tags,
-  modelUrl,
+  thumbnailUrl,
   canEdit,
   likeCount,
   commentCount,
@@ -48,20 +47,6 @@ export default function ModelCard({
   onDelete,
 }: ModelCardProps) {
   const [animating, setAnimating] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const [visible, setVisible] = useState(false);
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = cardRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setVisible(entry.isIntersecting),
-      { rootMargin: '200px' }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   const handleLike = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -71,31 +56,21 @@ export default function ModelCard({
   };
 
   return (
-    <div
-      ref={cardRef}
-      className="card"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
+    <div className="card">
       <div className="card-viewer" onClick={onClick}>
-        {visible ? (
-          <Canvas
-            camera={{ position: [2.5, 1.8, 2.5], fov: 40 }}
-            gl={{ antialias: false, powerPreference: 'low-power' }}
-            dpr={1}
-            frameloop={hovered ? 'always' : 'demand'}
-          >
-            <ModelScene
-              url={modelUrl}
-              autoRotate={hovered}
-              enableZoom={false}
-              enablePan={false}
-              enableRotate={false}
-            />
-          </Canvas>
+        {thumbnailUrl ? (
+          <img
+            src={thumbnailUrl}
+            alt={title}
+            className="card-thumbnail"
+            loading="lazy"
+          />
         ) : (
-          <div style={{ width: '100%', height: '100%', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ color: '#555', fontSize: '13px' }}>...</span>
+          <div className="card-thumbnail-placeholder">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#444" strokeWidth="1.5">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+            </svg>
+            <span>3D</span>
           </div>
         )}
         <div className="card-overlay-hover">

@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import ModelScene from './ModelScene';
-import { fetchComments, addComment, deleteComment, type CommentRow } from '../lib/supabase';
+import { fetchComments, addComment, deleteComment, type CommentRow } from '../lib/api';
 
 interface ModelModalProps {
   modelId: string;
@@ -86,7 +86,7 @@ export default function ModelModal({
     if (!userId) { onRequestAuth(); return; }
     if (!newComment.trim() || submitting) return;
     setSubmitting(true);
-    const comment = await addComment(modelId, userId, newComment.trim());
+    const comment = await addComment(modelId, newComment.trim());
     if (comment) {
       setComments((prev) => [...prev, comment]);
       setNewComment('');
