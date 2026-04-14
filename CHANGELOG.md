@@ -9,6 +9,9 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Técnico
 
+- **Migración 001 — RBAC multi-rol (DB local, Sprint 1)** — Schema de Diego aplicado en transacción sobre `galeria_3d_local`. Nuevas tablas: `roles` (catálogo admin/teacher/student con IDs fijos e `is_system`), `user_roles` (pivote M:N profile↔role con auditoría), `teacher_students` (pivote M:N con cohort + trigger validador de rol teacher), `password_reset_tokens` (tokens hasheados SHA-256 + forense ip/user_agent). CHECK constraint `email_domain_check` forza dominio `@unbosque.edu.co`. Backfill: 8 profiles migrados a `user_roles`; Carlos recibe doble rol (admin + teacher). `profiles.role` intacto como fallback durante Sprint 2. **Aún no aplicada en producción** — se ejecuta en Fase 2 tras QA verde del backend refactorizado.
+  - Archivos: `migrations/001_rbac_multi_role.sql`
+
 - **Skills `deploy-ghpages` y `qa` actualizados al stack real** — Ambos skills referenciaban Astro + Supabase + GitHub Pages. Reescritos para reflejar Vite + Express + PostgreSQL 16 + DigitalOcean Droplet + Nginx + PM2. Incluyen URLs de producción (`ceopacademia.org`), protocolo de deploy por `scp + pm2 restart`, rondas de QA adaptadas a API REST + JWT, y sección de rollback por capa (frontend / backend / DB). Principio "local es fuente de verdad" formalizado.
   - Archivos: `.claude/skills/deploy-ghpages/SKILL.md`, `.claude/skills/qa/SKILL.md`
 
