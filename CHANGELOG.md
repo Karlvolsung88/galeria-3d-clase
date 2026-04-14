@@ -7,6 +7,17 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Técnico
+
+- **Skills `deploy-ghpages` y `qa` actualizados al stack real** — Ambos skills referenciaban Astro + Supabase + GitHub Pages. Reescritos para reflejar Vite + Express + PostgreSQL 16 + DigitalOcean Droplet + Nginx + PM2. Incluyen URLs de producción (`ceopacademia.org`), protocolo de deploy por `scp + pm2 restart`, rondas de QA adaptadas a API REST + JWT, y sección de rollback por capa (frontend / backend / DB). Principio "local es fuente de verdad" formalizado.
+  - Archivos: `.claude/skills/deploy-ghpages/SKILL.md`, `.claude/skills/qa/SKILL.md`
+
+- **Informe técnico de Diego Ramírez — Diseño RBAC** — Revisión DBA del schema propuesto para multi-rol (admin/teacher/student) y relación profesor↔estudiante. 8 mejoras críticas: `roles.id` con IDs fijos (no SERIAL), `assigned_by ON DELETE SET NULL`, índice secundario en `role_id`, tabla pivote `teacher_students` (N:M) en vez de `teacher_id` en profiles, trigger de validación de rol, tokens de reset con hash SHA-256, CHECK constraint para dominio `@unbosque.edu.co`, estrategia para JWT stale. Schema final listo para Sprint 1.
+  - Archivos: `docs/informes/2026-04-14-diego-diseno-roles-rbac.md`
+
+- **Gitignore: `backend/` y `backups/`** — El backend Express clonado localmente desde el droplet y los dumps de DB no se versionan hasta decisión arquitectural sobre versionado del backend.
+  - Archivos: `.gitignore`
+
 ### Agregado
 
 - **Migración completa Supabase → DigitalOcean** — Backend propio reemplaza Supabase por completo. Nuevo stack: Express + PostgreSQL 16 + DigitalOcean Spaces + JWT auth. Login responde en <100ms (Supabase colgaba indefinidamente). Bundle reducido ~200KB al eliminar SDK Supabase.
