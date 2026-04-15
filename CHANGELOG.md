@@ -7,6 +7,10 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Mejorado
+
+- **UploadForm: el campo "Nombre del estudiante" ya no se pregunta** — El endpoint `POST /api/models` ya requiere autenticación y vincula el modelo al `user_id` del usuario logueado. El campo de texto duplicaba `profiles.full_name` y obligaba a re-tipear el nombre en cada subida. Ahora se elimina del JSX y el state inicializa con `getCurrentUser()?.full_name`, manteniendo el contrato del backend (sigue recibiendo `student` en el FormData) sin cambios. Archivo: `src/components/UploadForm.tsx`.
+
 ## [3.2.0] — 2026-04-15
 
 Release menor que completa el Plan C operativo de passwords: ahora el admin puede crear usuarios desde `/admin` con una password temporal generada automáticamente, resetearla manualmente cuando un estudiante la olvide, y el usuario es forzado a cambiarla en su primer login. Elimina la dependencia del canal email (Resend + whitelist IT) para onboarding y recuperación, dejando todo el flujo dentro del sistema.
