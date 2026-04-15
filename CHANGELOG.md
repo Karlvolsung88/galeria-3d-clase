@@ -9,6 +9,19 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Agregado
 
+- **Frontend RBAC multi-rol — fundamentos (Sprint 3.1)** — `src/lib/api.ts` ampliado para soportar roles múltiples:
+  - Tipos: `Role = 'admin' | 'teacher' | 'student'`, `AuthUser.roles[]`, `Profile.roles[]`, nuevos `AdminUser` y `TeacherStudent`.
+  - Helpers: `isAdmin(u)`, `isTeacher(u)`, `isStudent(u)`, `hasRole(u, role)` — tolerantes a `null`/`undefined` y con fallback a `role` primario.
+  - Funciones API admin: `getAdminUsers()`, `assignRole()`, `removeRole()`.
+  - Funciones API teacher: `getTeacherStudents()`, `assignStudentToTeacher()`, `unassignStudentFromTeacher()`.
+  - `initAuth()` ahora popula `currentUser.roles` desde el backend (con fallback `[profile.role]` por si aún no llega).
+  - Los 8 call sites existentes con `profile.role === 'admin'` siguen funcionando sin cambios (compatibilidad total con `role` primario).
+  - Build verde. Sin UI nueva todavía (Sub-sprint 3.2).
+  - Archivos: `src/lib/api.ts`
+
+- **Proxy Vite temporal a backend local (`http://localhost:3000`)** — Durante el desarrollo Sprint 3 del frontend multi-rol, `vite.config.ts` apunta `/api` al backend Express local (DB `galeria_3d_local`). El CDN sigue contra producción (bucket DO Spaces compartido). Documentado en el archivo con instrucciones explícitas para revertir antes del merge a `main`.
+  - Archivos: `vite.config.ts`
+
 - **Backend Express versionado en el monorepo (`backend/`)** — Decisión arquitectural: `backend/server.js` y dependencias quedan en este repo bajo `backend/`. `.env` y `node_modules` ignorados. `backend/.env.example` como template. El droplet sigue siendo la fuente de verdad de producción; el deploy a prod pasa por `scp backend/server.js root@droplet:/var/www/galeria-api/` + `pm2 restart` (ver skill `deploy-ghpages`).
   - Archivos: `backend/`, `.gitignore`, `backend/.env.example`
 
