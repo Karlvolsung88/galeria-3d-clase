@@ -7,6 +7,11 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Técnico
+
+- **QA manual Sprint 3 RBAC — 5/5 PASS en local** — End-to-end validado en `localhost:5173` + backend `localhost:3000` + DB `galeria_3d_local`. Tests: (Q1) login admin + panel con 8 usuarios y chips multi-rol, (Q2) asignación teacher↔student de los 7 estudiantes a Carlos, (Q3) salvaguarda último admin retorna banner error sin mutar estado, (Q4) student logueado no ve link "Panel Admin", (Q5) student accediendo a `/admin` por URL ve "Acceso restringido". Defensa en profundidad confirmada en 3 capas (DB → Backend → Frontend). Usuario de pruebas `Job Dante Alegria` (`jdalegria@unbosque.edu.co`) creado vía `POST /api/auth/register` para validar flujo Register real — **existe solo en DB local**, no se propaga a prod.
+  - Archivos: `docs/session-logs/2026-04-14.md`
+
 ### Agregado
 
 - **Panel de administración `/admin` (Sprint 3.2)** — Nueva página React para gestión RBAC completa desde el frontend:
