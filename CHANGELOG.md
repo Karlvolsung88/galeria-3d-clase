@@ -7,6 +7,10 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [3.1.0] — 2026-04-14
+
+Release mayor con RBAC multi-rol, Panel Admin y Panel Teacher, sistema de reset de password (preparado, con link oculto en Plan C operativo), dominio `ceopacademia.org` verificado en Resend, y hardening de auth. Desplegado al droplet `159.203.189.167` con backup completo (pg_dump + copia de `/var/www/galeria-frontend`).
+
 ### Seguridad
 
 - **Rotación de `RESEND_API_KEY`** — La key usada en dev local quedó expuesta en el transcript del chat con Claude Code. Decisión: **borrarla** en Resend sin generar reemplazo inmediato, ya que el Plan C tiene el link de reset oculto y no necesitamos Resend en prod por ahora. Efectos esperados: el endpoint `/api/auth/forgot-password` seguirá respondiendo 200 pero sin enviar email (modo dev-fallback que loguea el link a consola). El dominio `ceopacademia.org` sigue verificado (DKIM + SPF no se pierden al borrar la key). Para re-habilitar: seguir los pasos documentados en `backend/.env.example`.
