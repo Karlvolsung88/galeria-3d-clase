@@ -381,6 +381,21 @@ export async function fetchStudentSkills(userId: string): Promise<StudentSkill[]
   return apiFetch<StudentSkill[]>(`/skills/${userId}`);
 }
 
+// --- Password reset ---
+export async function requestPasswordReset(email: string): Promise<{ ok: boolean; message: string }> {
+  return apiFetch<{ ok: boolean; message: string }>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<{ ok: boolean; message: string }> {
+  return apiFetch<{ ok: boolean; message: string }>('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+}
+
 // --- Admin: gestión de usuarios y roles ---
 export async function getAdminUsers(): Promise<AdminUser[]> {
   return apiFetch<AdminUser[]>('/admin/users');

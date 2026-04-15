@@ -1,11 +1,15 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const crypto = require("crypto");
 const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+const { Resend } = require("resend");
+
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 const app = express();
 app.use(cors());
@@ -197,6 +201,156 @@ app.get("/api/auth/me", auth, async (req, res) => {
     const roles = await getUserRoles(req.user.id);
     res.json({ ...rows[0], roles, role: primaryRole(roles) });
   } catch (err) {
+    res.status(500).json({ error: "Error interno" });
+  }
+});
+
+// ============================================================
+// --- PASSWORD RESET ---
+// ============================================================
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
+
+/**
+ * Solicitar reset de password.
+ * Responde 200 SIEMPRE (no revelar si el email existe → previene enumeration).
+ * Si el email sí existe: genera token (32 bytes hex, guarda solo SHA-256 en DB)
+ * y envía email vía Resend con link {APP_URL}/reset-password?token=...
+ */
+app.post("/api/auth/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email requerido" });
+
+    const { rows } = await pool.query(
+      "SELECT id, full_name, email FROM profiles WHERE email = $1",
+      [email]
+    );
+
+    // Respuesta genérica para evitar enumeration — siempre 200
+    const ok = { ok: true, message: "Si el correo existe, recibirás un enlace para restablecer tu contraseña." };
+
+    if (!rows.length) {
+      return res.json(ok);
+    }
+
+    const user = rows[0];
+
+    // Generar token crudo y hash SHA-256
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+    await pool.query(
+      `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, ip_address, user_agent)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        user.id,
+        tokenHash,
+        expiresAt,
+        (req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress || "").toString().slice(0, 64),
+        (req.headers["user-agent"] || "").toString().slice(0, 255),
+      ]
+    );
+
+    const appUrl = process.env.APP_URL || "http://localhost:5173";
+    const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
+
+    // Envío del email — si Resend no está configurado, logueamos el link (dev)
+    if (!resend) {
+      console.log(`[RESET DEV] Link para ${email}: ${resetUrl}`);
+      return res.json(ok);
+    }
+
+    try {
+      await resend.emails.send({
+        from: process.env.RESEND_FROM || "Galeria 3D <onboarding@resend.dev>",
+        to: user.email,
+        subject: "Restablece tu contraseña — Galería 3D",
+        html: `
+          <div style="font-family: -apple-system, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; color: #1a1a1a;">
+            <h2 style="color: #0891b2;">Restablece tu contraseña</h2>
+            <p>Hola ${user.full_name},</p>
+            <p>Alguien (esperamos que tú) solicitó restablecer la contraseña de tu cuenta en la Galería 3D.</p>
+            <p>Para continuar, haz clic en el siguiente botón. El enlace expira en <strong>1 hora</strong>.</p>
+            <p style="margin: 28px 0;">
+              <a href="${resetUrl}" style="background: #0891b2; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600;">
+                Restablecer contraseña
+              </a>
+            </p>
+            <p style="color: #666; font-size: 13px;">O copia este enlace en tu navegador:<br/><code style="font-size: 12px;">${resetUrl}</code></p>
+            <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;" />
+            <p style="color: #999; font-size: 12px;">Si tú no hiciste esta solicitud, ignora este correo. Nadie podrá acceder a tu cuenta sin hacer clic en el enlace.</p>
+            <p style="color: #999; font-size: 12px;">— Estudio de Creación Digital IV · Universidad El Bosque</p>
+          </div>
+        `,
+      });
+    } catch (mailErr) {
+      console.error("Resend error:", mailErr);
+      // NO revelamos el error al cliente → siempre 200 igual
+    }
+
+    res.json(ok);
+  } catch (err) {
+    console.error("Forgot-password error:", err);
+    // Incluso ante error interno mantenemos la respuesta genérica
+    res.json({ ok: true, message: "Si el correo existe, recibirás un enlace para restablecer tu contraseña." });
+  }
+});
+
+/**
+ * Reset de password con token.
+ * Verifica: hash coincide, no expirado, no usado. Si todo OK, actualiza password y marca used_at.
+ */
+app.post("/api/auth/reset-password", async (req, res) => {
+  try {
+    const { token, new_password } = req.body;
+    if (!token || !new_password) return res.status(400).json({ error: "Token y nueva contraseña requeridos" });
+    if (typeof new_password !== "string" || new_password.length < 6) {
+      return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
+    }
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    const { rows } = await pool.query(
+      `SELECT id, user_id, expires_at, used_at
+       FROM password_reset_tokens
+       WHERE token_hash = $1`,
+      [tokenHash]
+    );
+
+    if (!rows.length) return res.status(400).json({ error: "Token inválido" });
+
+    const t = rows[0];
+    if (t.used_at) return res.status(400).json({ error: "Token ya utilizado" });
+    if (new Date(t.expires_at) < new Date()) return res.status(400).json({ error: "Token expirado" });
+
+    const newHash = await bcrypt.hash(new_password, 10);
+
+    // Actualizar password + marcar token usado en una transacción
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("UPDATE profiles SET password_hash = $1 WHERE id = $2", [newHash, t.user_id]);
+      await client.query("UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1", [t.id]);
+      // Invalidar cualquier otro token vigente del mismo usuario (por seguridad)
+      await client.query(
+        `UPDATE password_reset_tokens
+         SET used_at = NOW()
+         WHERE user_id = $1 AND used_at IS NULL AND id <> $2`,
+        [t.user_id, t.id]
+      );
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    res.json({ ok: true, message: "Contraseña actualizada" });
+  } catch (err) {
+    console.error("Reset-password error:", err);
     res.status(500).json({ error: "Error interno" });
   }
 });

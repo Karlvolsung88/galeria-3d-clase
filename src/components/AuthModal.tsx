@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { login, register } from '../lib/api';
+import { login, register, requestPasswordReset } from '../lib/api';
 
 interface AuthModalProps {
   onSuccess: () => void;
   onClose: () => void;
 }
 
+type AuthMode = 'login' | 'register' | 'forgot';
+
 export default function AuthModal({ onSuccess, onClose }: AuthModalProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -44,6 +46,21 @@ export default function AuthModal({ onSuccess, onClose }: AuthModalProps) {
     } catch (err: any) {
       setLoading(false);
       setError(err.message || 'Credenciales incorrectas');
+    }
+  };
+
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setLoading(true);
+    try {
+      const r = await requestPasswordReset(email);
+      setLoading(false);
+      setSuccess(r.message);
+    } catch (err: any) {
+      setLoading(false);
+      setError(err.message || 'No se pudo procesar la solicitud');
     }
   };
 
@@ -88,31 +105,39 @@ export default function AuthModal({ onSuccess, onClose }: AuthModalProps) {
       <div className="upload-modal" style={{ maxWidth: '420px' }}>
         <div className="upload-header">
           <h2 className="upload-title">
-            {mode === 'login' ? 'Iniciar Sesión' : 'Crear Cuenta'}
+            {mode === 'login' && 'Iniciar Sesión'}
+            {mode === 'register' && 'Crear Cuenta'}
+            {mode === 'forgot' && 'Recuperar contraseña'}
           </h2>
           <button className="modal-close" onClick={onClose} aria-label="Cerrar">
             ✕
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="auth-tabs">
-          <button
-            className={`auth-tab ${mode === 'login' ? 'active' : ''}`}
-            onClick={() => { setMode('login'); resetForm(); }}
-          >
-            Ingresar
-          </button>
-          <button
-            className={`auth-tab ${mode === 'register' ? 'active' : ''}`}
-            onClick={() => { setMode('register'); resetForm(); }}
-          >
-            Registrarse
-          </button>
-        </div>
+        {/* Tabs — solo en login/register */}
+        {mode !== 'forgot' && (
+          <div className="auth-tabs">
+            <button
+              className={`auth-tab ${mode === 'login' ? 'active' : ''}`}
+              onClick={() => { setMode('login'); resetForm(); }}
+            >
+              Ingresar
+            </button>
+            <button
+              className={`auth-tab ${mode === 'register' ? 'active' : ''}`}
+              onClick={() => { setMode('register'); resetForm(); }}
+            >
+              Registrarse
+            </button>
+          </div>
+        )}
 
         <form
-          onSubmit={mode === 'login' ? handleLogin : handleRegister}
+          onSubmit={
+            mode === 'login' ? handleLogin :
+            mode === 'register' ? handleRegister :
+            handleForgot
+          }
           className="upload-body"
         >
           {mode === 'register' && (
@@ -128,28 +153,48 @@ export default function AuthModal({ onSuccess, onClose }: AuthModalProps) {
             </div>
           )}
 
+          {mode === 'forgot' && (
+            <p className="auth-forgot-hint">
+              Ingresa el correo institucional con el que te registraste. Te enviaremos un enlace para restablecer tu contraseña.
+            </p>
+          )}
+
           <div className="upload-field">
             <label>Email *</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="correo@universidad.edu"
+              placeholder="correo@unbosque.edu.co"
               required
             />
           </div>
 
-          <div className="upload-field">
-            <label>Contraseña *</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Mínimo 6 caracteres"
-              required
-              minLength={6}
-            />
-          </div>
+          {mode !== 'forgot' && (
+            <div className="upload-field">
+              <label>Contraseña *</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Mínimo 6 caracteres"
+                required
+                minLength={6}
+              />
+            </div>
+          )}
+
+          {mode === 'login' && (
+            <div className="auth-forgot-link-row">
+              <button
+                type="button"
+                className="auth-forgot-link"
+                onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }}
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
+            </div>
+          )}
 
           {error && (
             <p className="auth-message auth-error">{error}</p>
@@ -160,13 +205,23 @@ export default function AuthModal({ onSuccess, onClose }: AuthModalProps) {
           )}
 
           <div className="upload-actions">
-            <button type="button" className="upload-cancel" onClick={onClose}>
-              Cancelar
-            </button>
+            {mode === 'forgot' ? (
+              <button
+                type="button"
+                className="upload-cancel"
+                onClick={() => { setMode('login'); resetForm(); }}
+              >
+                ← Volver
+              </button>
+            ) : (
+              <button type="button" className="upload-cancel" onClick={onClose}>
+                Cancelar
+              </button>
+            )}
             <button type="submit" className="upload-submit" disabled={loading}>
               {loading
-                ? (mode === 'login' ? 'Ingresando...' : 'Registrando...')
-                : (mode === 'login' ? 'Ingresar' : 'Crear cuenta')
+                ? (mode === 'login' ? 'Ingresando...' : mode === 'register' ? 'Registrando...' : 'Enviando...')
+                : (mode === 'login' ? 'Ingresar' : mode === 'register' ? 'Crear cuenta' : 'Enviar enlace')
               }
             </button>
           </div>
