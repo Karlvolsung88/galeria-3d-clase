@@ -7,6 +7,27 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Agregado
+
+- **Backend Express versionado en el monorepo (`backend/`)** — Decisión arquitectural: `backend/server.js` y dependencias quedan en este repo bajo `backend/`. `.env` y `node_modules` ignorados. `backend/.env.example` como template. El droplet sigue siendo la fuente de verdad de producción; el deploy a prod pasa por `scp backend/server.js root@droplet:/var/www/galeria-api/` + `pm2 restart` (ver skill `deploy-ghpages`).
+  - Archivos: `backend/`, `.gitignore`, `backend/.env.example`
+
+- **Refactor backend RBAC multi-rol (Sprint 2)** — `server.js` soporta ahora roles múltiples por usuario con fallback a `profiles.role` para migración soft.
+  - **Helpers nuevos**: `getUserRoles(id)`, `isTeacherOf(teacherId, studentId)`, `primaryRole(roles)`, `hasAnyRole(req, ...)`.
+  - **Middleware `requireRole(...allowed)`** reemplaza `adminOnly`. Acepta lista de roles permitidos.
+  - **JWT payload ahora incluye `roles: string[]`** además de `role: string` (compat con frontend actual).
+  - **Login/Register/Me** cargan roles desde `user_roles` con JOIN.
+  - **Register** valida dominio `@unbosque.edu.co` antes de golpear DB + crea entrada en `user_roles`.
+  - **`PUT/DELETE /api/models/:id`**: permisos owner OR admin OR teacher-del-owner (via `teacher_students`).
+  - **`PUT /api/profiles/:id`** y **`PUT /api/skills/:userId`**: self OR admin OR teacher-del-owner.
+  - **Nuevos endpoints admin**: `GET /api/admin/users`, `POST/DELETE /api/admin/users/:id/roles`, `POST/DELETE /api/admin/teacher-students`. Salvaguarda: no permite quitar el último admin del sistema.
+  - **Nuevo endpoint teacher**: `GET /api/teacher/students` — teachers ven solo sus asignados, admin ve todos con nombre del teacher.
+  - **15/15 tests curl pasaron**. Frontend sin tocar (Sprint 3).
+
+### Corregido
+
+- **Bug pre-existente — orden de rutas `/api/models/reorder`** — La ruta estaba declarada DESPUÉS de `/api/models/:id`, lo que hacía que Express capturara `reorder` como `:id` y fallara con 500 (UUID inválido en query). Afectaba también a producción. Ahora `/reorder` va ANTES de `/:id` (orden correcto de rutas estáticas antes que paramétricas).
+
 ### Técnico
 
 - **Migración 001 — RBAC multi-rol (DB local, Sprint 1)** — Schema de Diego aplicado en transacción sobre `galeria_3d_local`. Nuevas tablas: `roles` (catálogo admin/teacher/student con IDs fijos e `is_system`), `user_roles` (pivote M:N profile↔role con auditoría), `teacher_students` (pivote M:N con cohort + trigger validador de rol teacher), `password_reset_tokens` (tokens hasheados SHA-256 + forense ip/user_agent). CHECK constraint `email_domain_check` forza dominio `@unbosque.edu.co`. Backfill: 8 profiles migrados a `user_roles`; Carlos recibe doble rol (admin + teacher). `profiles.role` intacto como fallback durante Sprint 2. **Aún no aplicada en producción** — se ejecuta en Fase 2 tras QA verde del backend refactorizado.

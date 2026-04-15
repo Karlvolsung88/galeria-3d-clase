@@ -22,8 +22,10 @@ pnpm-debug.log*
 # typescript build info
 tsconfig.tsbuildinfo
 
-# entorno de desarrollo local (backend clonado del droplet + dumps DB)
-# decisión pendiente: versionar backend/ en este repo o en uno propio
-backend/
+# backend (versionado en este monorepo, pero credenciales y deps fuera)
+backend/node_modules/
+backend/.env
+
+# dumps de DB con datos de producción — nunca a git
 backups/
 
