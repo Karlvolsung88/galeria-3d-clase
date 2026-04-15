@@ -7,6 +7,10 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [3.2.1] — 2026-04-15
+
+Patch UX que elimina fricción en el formulario de subida de modelos.
+
 ### Mejorado
 
 - **UploadForm: el campo "Nombre del estudiante" ya no se pregunta** — El endpoint `POST /api/models` ya requiere autenticación y vincula el modelo al `user_id` del usuario logueado. El campo de texto duplicaba `profiles.full_name` y obligaba a re-tipear el nombre en cada subida. Ahora se elimina del JSX y el state inicializa con `getCurrentUser()?.full_name`, manteniendo el contrato del backend (sigue recibiendo `student` en el FormData) sin cambios. Archivo: `src/components/UploadForm.tsx`.
