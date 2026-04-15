@@ -2,16 +2,16 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // =============================================================================
-// ⚠️  PROXY LOCAL — Sprint 3 RBAC (2026-04-14)
-// Durante el desarrollo del frontend multi-rol, el proxy apunta al backend
-// Express que corre en http://localhost:3000 contra la DB local
-// `galeria_3d_local`. Antes del merge a main / deploy a prod:
-//   1) Volver `target` a 'https://ceopacademia.org'
-//   2) Volver `secure` a true
-// Ver: docs/session-logs/2026-04-14.md
+// Proxy de desarrollo — tanto /api como /cdn apuntan a prod (ceopacademia.org).
+// El frontend dev consume la API de prod a través de este proxy CORS-friendly.
+//
+// Si necesitas desarrollar contra el backend LOCAL (`cd backend && node server.js`):
+//   - Cambiar API_TARGET a 'http://localhost:3000'
+//   - Cambiar API_SECURE a false
+//   - NO commitear esos cambios: son solo para tu sesión de dev local
 // =============================================================================
-const API_TARGET = 'http://localhost:3000'
-const API_SECURE = false
+const API_TARGET = 'https://ceopacademia.org'
+const API_SECURE = true
 
 export default defineConfig({
   plugins: [react()],
