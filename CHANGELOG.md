@@ -7,6 +7,127 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [3.1.0] — 2026-04-14
+
+Release mayor con RBAC multi-rol, Panel Admin y Panel Teacher, sistema de reset de password (preparado, con link oculto en Plan C operativo), dominio `ceopacademia.org` verificado en Resend, y hardening de auth. Desplegado al droplet `159.203.189.167` con backup completo (pg_dump + copia de `/var/www/galeria-frontend`).
+
+### Seguridad
+
+- **Rotación de `RESEND_API_KEY`** — La key usada en dev local quedó expuesta en el transcript del chat con Claude Code. Decisión: **borrarla** en Resend sin generar reemplazo inmediato, ya que el Plan C tiene el link de reset oculto y no necesitamos Resend en prod por ahora. Efectos esperados: el endpoint `/api/auth/forgot-password` seguirá respondiendo 200 pero sin enviar email (modo dev-fallback que loguea el link a consola). El dominio `ceopacademia.org` sigue verificado (DKIM + SPF no se pierden al borrar la key). Para re-habilitar: seguir los pasos documentados en `backend/.env.example`.
+  - Archivos: `backend/.env.example` (documentación del proceso de re-habilitación)
+
+### Cambiado
+
+- **Plan C operativo para reset de contraseña** — Ocultado el link "¿Olvidaste tu contraseña?" en `AuthModal` (mode login). Decisión tomada ante dos bloqueantes no resueltos para prod: (1) `@unbosque.edu.co` dropea silenciosamente correos de `ceopacademia.org` (transport rule institucional), y (2) Resend free está capado a 5 emails/día y 5/mes. Mientras se coordina con IT de El Bosque para whitelistar el dominio + upgrade a Resend Pro, el admin genera passwords temporales desde `/admin` (o SQL) y las comunica a los estudiantes por otro canal (Teams, presencial). **Los endpoints `/api/auth/forgot-password` y `/api/auth/reset-password` siguen funcionales en backend** — solo se oculta la entrada en la UI. Para re-habilitar cuando desbloqueen IT + Resend: descomentar el bloque en `src/components/AuthModal.tsx`.
+  - Archivos: `src/components/AuthModal.tsx`
+
+### Corregido
+
+- **Email de reset — charset UTF-8 + desvinculación de marca institucional** — Dos ajustes al template HTML del email de recuperación de contraseña en `backend/server.js`:
+  - **Mojibake arreglado**: el HTML no declaraba charset, por lo que Outlook (y otros clientes) interpretaban el cuerpo como Latin-1 / Windows-1252 y mostraban tildes y eñes como `�`. Fix: envolver el HTML en estructura completa (`<!DOCTYPE html>` + `<head>` con `<meta charset="UTF-8">`).
+  - **Footer rebrand**: se removió "Universidad El Bosque" del pie. Dado que el email se envía desde `noreply@ceopacademia.org` (no desde un dominio institucional), representar la marca de la U sería incorrecto. Queda: "— Estudio de Creación Digital · CEOPAcademia".
+  - Archivos: `backend/server.js`
+
+### Documentado
+
+- **Hallazgo bloqueante para prod — deliverability contra `@unbosque.edu.co`** — Durante el QA del Sprint 4, Resend reportó `delivered` pero los emails no llegaron al inbox institucional de Carlos, no aparecieron en spam, ni en la cuarentena de Microsoft Defender (`security.microsoft.com/quarantine`, 0 items incluso con "Show all senders"). Confirmación: el envío directo a un Outlook personal (`almeyda.ce@outlook.com`) llegó correctamente a "Correo no deseado" — validando que Resend + DKIM + SPF del dominio `ceopacademia.org` funcionan al 100%. Conclusión: El Bosque tiene una transport rule que dropea silenciosamente correos de dominios nuevos sin reputación. Implicaciones y opciones para resolver en prod:
+  - **A)** Coordinar con IT de El Bosque para agregar `ceopacademia.org` a la lista de remitentes permitidos (Allow List) en Office 365. Proceso institucional que puede tomar días.
+  - **B)** Agregar DMARC en DNS y dejar que el dominio acumule reputación con envíos legítimos (solución gradual, semanas).
+  - **C)** Plan operativo: el admin genera passwords temporales al crear estudiantes y las comunica por otro canal (Teams, presencial). El reset self-service queda como conveniencia cuando A/B estén resueltos.
+  - Este hallazgo extiende el checklist bloqueante de prod: además de rotar la `RESEND_API_KEY` (que quedó en el chat), hay que resolver deliverability antes de habilitar el flujo de reset para estudiantes.
+
+- **Rate limit del plan free de Resend — bloqueante adicional para prod** — Headers de respuesta del SDK revelan `x-resend-daily-quota: 5` y `x-resend-monthly-quota: 5`. El plan free está capado a 5 emails/día y 5/mes, insuficiente para un curso con ~25 estudiantes. Antes de habilitar el flujo reset en prod hay que hacer upgrade a un plan pagado (Resend Pro: USD 20/mes, 50K emails). Alternativa temporal mientras: plan operativo C (admin genera passwords manualmente y las comunica por otro canal).
+
+### Agregado
+
+- **Dominio `ceopacademia.org` verificado en Resend** — Configurado vía integración OAuth con DigitalOcean (3 DNS records auto-creados: DKIM TXT `resend._domainkey`, MX `send` apuntando a SES de Amazon, SPF TXT `send`). Status `Verified` en Resend a las 10:36 PM del 2026-04-14. Backend actualizado en `.env` local: `RESEND_FROM=Galeria 3D <noreply@ceopacademia.org>` (reemplaza el default de dev `onboarding@resend.dev`). Envíos posteriores salen desde el dominio propio del proyecto.
+
+- **Panel Teacher `/teacher` (Sprint 5)** — Vista read-only para profesores con la lista de SUS estudiantes asignados. El backend (`GET /api/teacher/students`) ya filtraba por rol; el frontend suma la página y link en `UserMenu`. Si el usuario es admin, ve a todos los estudiantes con la columna "Profesor" extra (reutiliza el mismo endpoint que ya soportaba ambos casos).
+  - Protección `isTeacher(user) || isAdmin(user)`, redirige a home si no hay sesión, muestra "Acceso restringido" si no cumple rol.
+  - Empty state distinto para teacher ("Aún no tienes estudiantes asignados") vs admin ("No hay estudiantes registrados todavía").
+  - Fecha `assigned_at` formateada en español + link "Ver perfil" a `/estudiantes?focus={id}` por cada estudiante.
+  - Link "Mis estudiantes" en `UserMenu` visible solo para `isTeacher(profile)` (puede aparecer junto a "Panel Admin" si el usuario tiene ambos roles, como Carlos).
+  - Reutiliza los estilos `admin-*` existentes — sin CSS nuevo.
+  - Archivos: `src/components/TeacherPanel.tsx`, `src/App.tsx`, `src/components/UserMenu.tsx`
+
+- **Sistema de reset de contraseña (Sprint 4)** — Flujo completo para que los estudiantes recuperen acceso sin depender del admin.
+  - **Backend**: dos endpoints nuevos en `server.js`:
+    - `POST /api/auth/forgot-password` — genera token crudo de 32 bytes hex, guarda solo SHA-256 en `password_reset_tokens` con TTL de 1 hora, registra `ip_address` + `user_agent` para forense. Envía email HTML via Resend. **Respuesta siempre 200** (no revela si el email existe → previene enumeration). Si no hay `RESEND_API_KEY`, loguea el link a consola para dev.
+    - `POST /api/auth/reset-password` — verifica hash, expiración y `used_at IS NULL`. Actualiza `profiles.password_hash` con bcrypt(10) + marca token usado + invalida cualquier otro token vigente del mismo usuario, todo en transacción.
+  - **Frontend**:
+    - `AuthModal` ahora tiene 3 modos: `login`, `register`, `forgot`. Link "¿Olvidaste tu contraseña?" en el modo login.
+    - Nueva ruta `/reset-password?token=...` con página dedicada (`ResetPasswordPage`) — valida que token exista, pide nueva contraseña con confirmación, muestra feedback ok/error, redirige a home tras 2.5s en éxito.
+    - Funciones API: `requestPasswordReset(email)`, `resetPassword(token, newPassword)`.
+  - **Email**: HTML responsive con el link (copiable como texto abajo como fallback), marca institucional.
+  - **Dependencia nueva**: `resend` (7 paquetes, 0 vulnerabilidades).
+  - **Credenciales**: `RESEND_API_KEY` + `RESEND_FROM` + `APP_URL` en `backend/.env` (placeholder en `.env.example`). En dev, `RESEND_FROM=onboarding@resend.dev` funciona sin verificar dominio. En prod habrá que verificar `ceopacademia.org` en Resend y usar algo tipo `noreply@ceopacademia.org`.
+  - Archivos: `backend/server.js`, `backend/.env.example`, `backend/package.json`, `backend/package-lock.json`, `src/lib/api.ts`, `src/components/AuthModal.tsx`, `src/components/ResetPasswordPage.tsx`, `src/App.tsx`, `src/styles/global.css`
+
+### Técnico
+
+- **Migración 002 — Backfill de emails institucionales (DB local)** — Los 7 estudiantes migrados desde producción no tenían `profiles.email` (columna vacía en el dump original). Bloqueante para Sprint 4 (password reset). Migración transaccional aplicada sobre `galeria_3d_local`: 7 UPDATEs por `full_name` exacto + bloque DO con validación `7/7 estudiantes con email institucional` antes del COMMIT. Todos los emails cumplen el CHECK `email_domain_check` (`@unbosque.edu.co`). Archivo reutilizable en Fase 2 (prod) con `psql --single-transaction -f migrations/002_backfill_student_emails.sql`.
+  - Archivos: `migrations/002_backfill_student_emails.sql`
+
+- **QA manual Sprint 3 RBAC — 5/5 PASS en local** — End-to-end validado en `localhost:5173` + backend `localhost:3000` + DB `galeria_3d_local`. Tests: (Q1) login admin + panel con 8 usuarios y chips multi-rol, (Q2) asignación teacher↔student de los 7 estudiantes a Carlos, (Q3) salvaguarda último admin retorna banner error sin mutar estado, (Q4) student logueado no ve link "Panel Admin", (Q5) student accediendo a `/admin` por URL ve "Acceso restringido". Defensa en profundidad confirmada en 3 capas (DB → Backend → Frontend). Usuario de pruebas `Job Dante Alegria` (`jdalegria@unbosque.edu.co`) creado vía `POST /api/auth/register` para validar flujo Register real — **existe solo en DB local**, no se propaga a prod.
+  - Archivos: `docs/session-logs/2026-04-14.md`
+
+### Agregado
+
+- **Panel de administración `/admin` (Sprint 3.2)** — Nueva página React para gestión RBAC completa desde el frontend:
+  - Ruta `/admin` protegida con `isAdmin(user)`: redirige al home si no hay sesión, muestra pantalla "Acceso restringido" si autenticado pero sin rol admin.
+  - **Sección Usuarios & roles**: tabla con todos los usuarios, chips por rol (`admin` naranja, `teacher` morado, `student` cian), y 3 botones toggle `+/− admin|teacher|student`. Confirma por `window.confirm`, muestra feedback inline (ok/error), deshabilita botones mientras hay operación en curso, y surfaces el error "último admin" que viene del backend.
+  - **Sección Teacher↔Student**: formulario con 3 selects (teacher, estudiante, cohort opcional) + listado completo de estudiantes con su teacher actual (admin ve todos) y botón "Desasignar" por fila.
+  - Link "Panel Admin" en `UserMenu` (visible solo si `isAdmin(profile)`).
+  - `UserMenu` ahora muestra chips multi-rol en el dropdown header (`Admin · Profesor`).
+  - Estilos nuevos `admin-*` en `global.css` (tabla responsive, chips por rol, feedback banner, form grid).
+  - Archivos: `src/components/AdminPanel.tsx`, `src/App.tsx`, `src/components/UserMenu.tsx`, `src/styles/global.css`
+
+- **Frontend RBAC multi-rol — fundamentos (Sprint 3.1)** — `src/lib/api.ts` ampliado para soportar roles múltiples:
+  - Tipos: `Role = 'admin' | 'teacher' | 'student'`, `AuthUser.roles[]`, `Profile.roles[]`, nuevos `AdminUser` y `TeacherStudent`.
+  - Helpers: `isAdmin(u)`, `isTeacher(u)`, `isStudent(u)`, `hasRole(u, role)` — tolerantes a `null`/`undefined` y con fallback a `role` primario.
+  - Funciones API admin: `getAdminUsers()`, `assignRole()`, `removeRole()`.
+  - Funciones API teacher: `getTeacherStudents()`, `assignStudentToTeacher()`, `unassignStudentFromTeacher()`.
+  - `initAuth()` ahora popula `currentUser.roles` desde el backend (con fallback `[profile.role]` por si aún no llega).
+  - Los 8 call sites existentes con `profile.role === 'admin'` siguen funcionando sin cambios (compatibilidad total con `role` primario).
+  - Build verde. Sin UI nueva todavía (Sub-sprint 3.2).
+  - Archivos: `src/lib/api.ts`
+
+- **Proxy Vite temporal a backend local (`http://localhost:3000`)** — Durante el desarrollo Sprint 3 del frontend multi-rol, `vite.config.ts` apunta `/api` al backend Express local (DB `galeria_3d_local`). El CDN sigue contra producción (bucket DO Spaces compartido). Documentado en el archivo con instrucciones explícitas para revertir antes del merge a `main`.
+  - Archivos: `vite.config.ts`
+
+- **Backend Express versionado en el monorepo (`backend/`)** — Decisión arquitectural: `backend/server.js` y dependencias quedan en este repo bajo `backend/`. `.env` y `node_modules` ignorados. `backend/.env.example` como template. El droplet sigue siendo la fuente de verdad de producción; el deploy a prod pasa por `scp backend/server.js root@droplet:/var/www/galeria-api/` + `pm2 restart` (ver skill `deploy-ghpages`).
+  - Archivos: `backend/`, `.gitignore`, `backend/.env.example`
+
+- **Refactor backend RBAC multi-rol (Sprint 2)** — `server.js` soporta ahora roles múltiples por usuario con fallback a `profiles.role` para migración soft.
+  - **Helpers nuevos**: `getUserRoles(id)`, `isTeacherOf(teacherId, studentId)`, `primaryRole(roles)`, `hasAnyRole(req, ...)`.
+  - **Middleware `requireRole(...allowed)`** reemplaza `adminOnly`. Acepta lista de roles permitidos.
+  - **JWT payload ahora incluye `roles: string[]`** además de `role: string` (compat con frontend actual).
+  - **Login/Register/Me** cargan roles desde `user_roles` con JOIN.
+  - **Register** valida dominio `@unbosque.edu.co` antes de golpear DB + crea entrada en `user_roles`.
+  - **`PUT/DELETE /api/models/:id`**: permisos owner OR admin OR teacher-del-owner (via `teacher_students`).
+  - **`PUT /api/profiles/:id`** y **`PUT /api/skills/:userId`**: self OR admin OR teacher-del-owner.
+  - **Nuevos endpoints admin**: `GET /api/admin/users`, `POST/DELETE /api/admin/users/:id/roles`, `POST/DELETE /api/admin/teacher-students`. Salvaguarda: no permite quitar el último admin del sistema.
+  - **Nuevo endpoint teacher**: `GET /api/teacher/students` — teachers ven solo sus asignados, admin ve todos con nombre del teacher.
+  - **15/15 tests curl pasaron**. Frontend sin tocar (Sprint 3).
+
+### Corregido
+
+- **Bug pre-existente — orden de rutas `/api/models/reorder`** — La ruta estaba declarada DESPUÉS de `/api/models/:id`, lo que hacía que Express capturara `reorder` como `:id` y fallara con 500 (UUID inválido en query). Afectaba también a producción. Ahora `/reorder` va ANTES de `/:id` (orden correcto de rutas estáticas antes que paramétricas).
+
+### Técnico
+
+- **Migración 001 — RBAC multi-rol (DB local, Sprint 1)** — Schema de Diego aplicado en transacción sobre `galeria_3d_local`. Nuevas tablas: `roles` (catálogo admin/teacher/student con IDs fijos e `is_system`), `user_roles` (pivote M:N profile↔role con auditoría), `teacher_students` (pivote M:N con cohort + trigger validador de rol teacher), `password_reset_tokens` (tokens hasheados SHA-256 + forense ip/user_agent). CHECK constraint `email_domain_check` forza dominio `@unbosque.edu.co`. Backfill: 8 profiles migrados a `user_roles`; Carlos recibe doble rol (admin + teacher). `profiles.role` intacto como fallback durante Sprint 2. **Aún no aplicada en producción** — se ejecuta en Fase 2 tras QA verde del backend refactorizado.
+  - Archivos: `migrations/001_rbac_multi_role.sql`
+
+- **Skills `deploy-ghpages` y `qa` actualizados al stack real** — Ambos skills referenciaban Astro + Supabase + GitHub Pages. Reescritos para reflejar Vite + Express + PostgreSQL 16 + DigitalOcean Droplet + Nginx + PM2. Incluyen URLs de producción (`ceopacademia.org`), protocolo de deploy por `scp + pm2 restart`, rondas de QA adaptadas a API REST + JWT, y sección de rollback por capa (frontend / backend / DB). Principio "local es fuente de verdad" formalizado.
+  - Archivos: `.claude/skills/deploy-ghpages/SKILL.md`, `.claude/skills/qa/SKILL.md`
+
+- **Informe técnico de Diego Ramírez — Diseño RBAC** — Revisión DBA del schema propuesto para multi-rol (admin/teacher/student) y relación profesor↔estudiante. 8 mejoras críticas: `roles.id` con IDs fijos (no SERIAL), `assigned_by ON DELETE SET NULL`, índice secundario en `role_id`, tabla pivote `teacher_students` (N:M) en vez de `teacher_id` en profiles, trigger de validación de rol, tokens de reset con hash SHA-256, CHECK constraint para dominio `@unbosque.edu.co`, estrategia para JWT stale. Schema final listo para Sprint 1.
+  - Archivos: `docs/informes/2026-04-14-diego-diseno-roles-rbac.md`
+
+- **Gitignore: `backend/` y `backups/`** — El backend Express clonado localmente desde el droplet y los dumps de DB no se versionan hasta decisión arquitectural sobre versionado del backend.
+  - Archivos: `.gitignore`
+
 ### Agregado
 
 - **Migración completa Supabase → DigitalOcean** — Backend propio reemplaza Supabase por completo. Nuevo stack: Express + PostgreSQL 16 + DigitalOcean Spaces + JWT auth. Login responde en <100ms (Supabase colgaba indefinidamente). Bundle reducido ~200KB al eliminar SDK Supabase.
@@ -30,6 +151,15 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 - **Documentación de deploy** — Guía completa con credenciales, estructura, endpoints API, comandos de monitoreo.
   - Archivos: `docs/deploy.md`
+
+- **Dominio ceopacademia.org + SSL** — Dominio conectado desde Hostinger (nameservers transferidos a DigitalOcean). Registros A para `@` y `www` → 159.203.189.167. SSL con Let's Encrypt (certbot), auto-renovación, HTTP redirige a HTTPS.
+  - Nginx: `server_name ceopacademia.org www.ceopacademia.org`
+
+- **Code splitting Three.js** — Three.js (~847KB) se carga on-demand con `React.lazy()` en vez de en la carga inicial. Carga inicial reducida de ~1.3MB a ~317KB. ModelModal, UploadForm, EditModelForm y ThumbnailGenerator son lazy-loaded.
+  - Archivos: `Gallery.tsx` (lazy imports), `ModelModal.tsx`, `ModelScene.tsx`
+
+- **Loading estilo Sketchfab en ModelModal** — Al abrir un modelo, se muestra el thumbnail como placeholder con blur + spinner. Cuando el GLB termina de cargar, el Canvas 3D hace crossfade sobre el thumbnail (transición 0.6s). Elimina el fondo negro vacío durante la carga.
+  - Archivos: `ModelModal.tsx`, `ModelScene.tsx` (onLoaded callback), `global.css` (crossfade CSS)
 
 ### Mejorado
 

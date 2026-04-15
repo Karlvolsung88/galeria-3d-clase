@@ -7,22 +7,69 @@ let authToken: string | null = localStorage.getItem('auth_token');
 let currentUser: AuthUser | null = null;
 const authListeners: Array<(user: AuthUser | null) => void> = [];
 
+export type Role = 'admin' | 'teacher' | 'student';
+
 export interface AuthUser {
   id: string;
   full_name: string;
-  role: 'admin' | 'student';
+  /** Rol primario (para compatibilidad con código existente). Tras RBAC multi-rol, usar `roles` para decisiones. */
+  role: Role;
+  roles: Role[];
   email: string;
 }
 
 export interface Profile {
   id: string;
   full_name: string;
-  role: 'admin' | 'student';
+  /** Rol primario (compat). Para decisiones multi-rol usar `roles`. */
+  role: Role;
+  roles: Role[];
   email?: string;
   created_at?: string;
   artstation_url?: string | null;
   instagram_url?: string | null;
   bio?: string | null;
+}
+
+/** Usuario devuelto por GET /api/admin/users (incluye array agregado de roles). */
+export interface AdminUser {
+  id: string;
+  full_name: string;
+  email: string;
+  created_at: string;
+  roles: Role[];
+}
+
+/** Relación profesor↔estudiante devuelta por GET /api/teacher/students. */
+export interface TeacherStudent {
+  id: string;
+  full_name: string;
+  email: string;
+  cohort: string | null;
+  assigned_at: string | null;
+  /** Solo presente cuando el solicitante es admin. */
+  teacher_id?: string | null;
+  teacher_name?: string | null;
+}
+
+// --- Role helpers (safe frente a user null/undefined) ---
+export function hasRole(user: { roles?: Role[]; role?: Role } | null | undefined, role: Role): boolean {
+  if (!user) return false;
+  if (user.roles && user.roles.includes(role)) return true;
+  // Fallback por si el backend aún no envió `roles` (durante soft migration)
+  return user.role === role;
+}
+
+export function isAdmin(user: { roles?: Role[]; role?: Role } | null | undefined): boolean {
+  return hasRole(user, 'admin');
+}
+
+export function isTeacher(user: { roles?: Role[]; role?: Role } | null | undefined): boolean {
+  return hasRole(user, 'teacher');
+}
+
+export function isStudent(user: { roles?: Role[]; role?: Role } | null | undefined): boolean {
+  return hasRole(user, 'student');
 }
 
 export interface ModelRow {
@@ -59,7 +106,7 @@ export interface StudentSkill {
 export interface StudentWithSkills {
   id: string;
   full_name: string;
-  role: 'admin' | 'student';
+  role: Role;
   student_skills: StudentSkill[];
   artstation_url?: string | null;
   instagram_url?: string | null;
@@ -173,7 +220,13 @@ export async function initAuth(): Promise<{ user: AuthUser | null; profile: Prof
   if (!authToken) return { user: null, profile: null };
   try {
     const profile = await apiFetch<Profile>('/auth/me');
-    currentUser = { id: profile.id, full_name: profile.full_name, role: profile.role, email: profile.email || '' };
+    currentUser = {
+      id: profile.id,
+      full_name: profile.full_name,
+      role: profile.role,
+      roles: profile.roles ?? [profile.role],
+      email: profile.email || '',
+    };
     return { user: currentUser, profile };
   } catch {
     signOut();
@@ -326,4 +379,81 @@ export async function upsertStudentSkills(
 
 export async function fetchStudentSkills(userId: string): Promise<StudentSkill[]> {
   return apiFetch<StudentSkill[]>(`/skills/${userId}`);
+}
+
+// --- Password reset ---
+export async function requestPasswordReset(email: string): Promise<{ ok: boolean; message: string }> {
+  return apiFetch<{ ok: boolean; message: string }>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<{ ok: boolean; message: string }> {
+  return apiFetch<{ ok: boolean; message: string }>('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+}
+
+// --- Admin: gestión de usuarios y roles ---
+export async function getAdminUsers(): Promise<AdminUser[]> {
+  return apiFetch<AdminUser[]>('/admin/users');
+}
+
+export async function assignRole(userId: string, role: Role): Promise<boolean> {
+  try {
+    await apiFetch<{ ok: boolean }>(`/admin/users/${userId}/roles`, {
+      method: 'POST',
+      body: JSON.stringify({ role }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function removeRole(userId: string, role: Role): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await apiFetch<{ ok: boolean }>(`/admin/users/${userId}/roles/${role}`, {
+      method: 'DELETE',
+    });
+    return { ok: true };
+  } catch (e) {
+    const err = e as Error;
+    return { ok: false, error: err.message };
+  }
+}
+
+// --- Teacher/Admin: relación profesor↔estudiante ---
+export async function getTeacherStudents(): Promise<TeacherStudent[]> {
+  return apiFetch<TeacherStudent[]>('/teacher/students');
+}
+
+export async function assignStudentToTeacher(
+  teacherId: string,
+  studentId: string,
+  cohort?: string | null
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await apiFetch<{ ok: boolean }>('/admin/teacher-students', {
+      method: 'POST',
+      body: JSON.stringify({ teacher_id: teacherId, student_id: studentId, cohort: cohort ?? null }),
+    });
+    return { ok: true };
+  } catch (e) {
+    const err = e as Error;
+    return { ok: false, error: err.message };
+  }
+}
+
+export async function unassignStudentFromTeacher(teacherId: string, studentId: string): Promise<boolean> {
+  try {
+    await apiFetch<{ ok: boolean }>(`/admin/teacher-students/${teacherId}/${studentId}`, {
+      method: 'DELETE',
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
@@ -10,11 +10,13 @@ import {
 } from '../lib/api';
 import SortableModelCard from './SortableModelCard';
 import ModelCard from './ModelCard';
-import ModelModal from './ModelModal';
-import UploadForm from './UploadForm';
-import EditModelForm from './EditModelForm';
 import AuthModal from './AuthModal';
-import ThumbnailGenerator from './ThumbnailGenerator';
+
+// Lazy: estos componentes cargan Three.js (~1.3MB)
+const ModelModal = lazy(() => import('./ModelModal'));
+const UploadForm = lazy(() => import('./UploadForm'));
+const EditModelForm = lazy(() => import('./EditModelForm'));
+const ThumbnailGenerator = lazy(() => import('./ThumbnailGenerator'));
 
 const categories = [
   { key: 'all', label: 'Todos' },
@@ -324,6 +326,7 @@ export default function Gallery() {
         </div>
       </DndContext>
 
+      <Suspense fallback={null}>
       {selectedModel && (
         <ModelModal
           key={`modal-${modalCounter.current}`}
@@ -334,6 +337,7 @@ export default function Gallery() {
           description={selectedModel.description}
           tags={selectedModel.tags}
           modelUrl={selectedModel.file_url}
+          thumbnailUrl={selectedModel.thumbnail_url}
           userId={userId}
           isAdmin={isAdmin}
           likeCount={likeCounts[selectedModel.id] || 0}
@@ -405,6 +409,7 @@ export default function Gallery() {
       {showThumbGen && (
         <ThumbnailGenerator regenerateAll={thumbRegenAll} onDone={() => { setShowThumbGen(false); setThumbRegenAll(false); loadModels(); }} />
       )}
+      </Suspense>
     </>
   );
 }

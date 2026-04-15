@@ -1,6 +1,12 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Environment, ContactShadows, OrbitControls, Html } from '@react-three/drei';
 import Model3D from './Model3D';
+
+/** Componente invisible que notifica cuando se monta (modelo cargó) */
+function LoadNotifier({ onLoaded }: { onLoaded?: () => void }) {
+  useEffect(() => { onLoaded?.(); }, [onLoaded]);
+  return null;
+}
 
 interface ModelSceneProps {
   url: string;
@@ -14,6 +20,8 @@ interface ModelSceneProps {
   enableRotate?: boolean;
   /** Mostrar suelo mate con contact shadows */
   showFloor?: boolean;
+  /** Callback cuando el modelo terminó de cargar */
+  onLoaded?: () => void;
 }
 
 /**
@@ -27,6 +35,7 @@ export default function ModelScene({
   enablePan = true,
   enableRotate = true,
   showFloor = true,
+  onLoaded,
 }: ModelSceneProps) {
   return (
     <>
@@ -43,6 +52,7 @@ export default function ModelScene({
       {/* Modelo */}
       <Suspense fallback={<Html center><span style={{ color: '#555', fontSize: '13px' }}>Cargando 3D...</span></Html>}>
         <Model3D url={url} />
+        <LoadNotifier onLoaded={onLoaded} />
       </Suspense>
 
       {/* Suelo mate + sombras */}

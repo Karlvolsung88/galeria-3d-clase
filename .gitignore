@@ -21,3 +21,11 @@ pnpm-debug.log*
 
 # typescript build info
 tsconfig.tsbuildinfo
+
+# backend (versionado en este monorepo, pero credenciales y deps fuera)
+backend/node_modules/
+backend/.env
+
+# dumps de DB con datos de producción — nunca a git
+backups/
+

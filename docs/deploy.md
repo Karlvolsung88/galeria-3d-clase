@@ -10,7 +10,8 @@
 | **IP** | `159.203.189.167` |
 | **Spaces** | DigitalOcean | Bucket `galeria-3d-files`, región `nyc3` |
 | **CDN** | `galeria-3d-files.nyc3.cdn.digitaloceanspaces.com` |
-| **Dominio** | Pendiente: `ceopacademia.org` |
+| **Dominio** | `ceopacademia.org` (Hostinger → NS de DigitalOcean) |
+| **SSL** | Let's Encrypt, auto-renovación (expira 2026-07-12) |
 
 ## Credenciales del Droplet
 
@@ -69,7 +70,7 @@ Role: admin
 
 | Servicio | Gestión | Puerto |
 |----------|---------|--------|
-| **Nginx** | `systemctl restart nginx` | 80 |
+| **Nginx** | `systemctl restart nginx` | 80/443 |
 | **API** | `pm2 restart galeria-api` | 3000 |
 | **PostgreSQL** | `systemctl restart postgresql` | 5432 |
 
@@ -97,7 +98,16 @@ pm2 logs galeria-api  # verificar
 ```nginx
 server {
     listen 80;
-    server_name _;
+    server_name ceopacademia.org www.ceopacademia.org _;
+    # Certbot redirige HTTP → HTTPS automáticamente
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name ceopacademia.org www.ceopacademia.org _;
+    ssl_certificate /etc/letsencrypt/live/ceopacademia.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/ceopacademia.org/privkey.pem;
     root /var/www/galeria-frontend;
     index index.html;
 

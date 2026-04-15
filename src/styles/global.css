@@ -524,8 +524,65 @@ body::before {
 
 .modal-viewer-wrap {
   position: relative;
-  background: var(--surface2);
+  background: #1a1a1a;
   overflow: hidden;
+}
+
+/* Thumbnail placeholder (Sketchfab-style loading) */
+.modal-thumb-placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.6s ease;
+}
+.modal-thumb-placeholder img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(2px) brightness(0.7);
+}
+.modal-thumb-placeholder.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.modal-loading-spinner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.modal-loading-spinner span {
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid rgba(255,255,255,0.1);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Canvas 3D fade-in */
+.modal-canvas-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+.modal-canvas-wrap.loaded {
+  opacity: 1;
+  z-index: 3;
 }
 
 .modal-panel {
@@ -2439,3 +2496,324 @@ footer p {
   .skills-editor-sliders { grid-template-columns: 1fr; }
   .hero-nav { margin-bottom: 16px; }
 }
+
+/* ===========================================================================
+   AdminPanel — Sprint 3.2
+   ========================================================================= */
+
+.admin-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 40px 64px;
+  color: var(--text);
+}
+
+.admin-header { margin-bottom: 28px; }
+.admin-header h1 {
+  font-size: 28px;
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+}
+.admin-subtitle {
+  color: #8a93a8;
+  font-size: 14px;
+  margin: 0;
+}
+
+.admin-loading,
+.admin-denied {
+  max-width: 600px;
+  margin: 80px auto;
+  padding: 40px 32px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #0d1118;
+}
+.admin-denied h2 { margin: 0 0 12px; color: var(--accent2); }
+.admin-denied button {
+  margin-top: 16px;
+  padding: 10px 22px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.admin-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  margin-bottom: 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  border: 1px solid var(--border);
+}
+.admin-feedback--ok { background: #00ff8815; border-color: #00ff88; color: #00ff88; }
+.admin-feedback--error { background: #ff4d0015; border-color: var(--accent2); color: var(--accent2); }
+.admin-feedback-close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.admin-section {
+  background: #0d1118;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.admin-section-title {
+  margin: 0 0 18px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.admin-table-wrap { overflow-x: auto; }
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.admin-table th {
+  color: #8a93a8;
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.admin-table tr:last-child td { border-bottom: none; }
+.admin-table tr:hover td { background: #11161f; }
+
+.admin-td-email { color: #8a93a8; font-size: 13px; }
+.admin-empty {
+  text-align: center;
+  color: #8a93a8;
+  padding: 20px;
+  font-style: italic;
+}
+
+.admin-chip-row,
+.admin-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-chip {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--border);
+}
+.admin-chip--admin    { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+.admin-chip--teacher  { background: #7a3bff; color: #fff; border-color: #7a3bff; }
+.admin-chip--student  { background: var(--accent); color: #000; border-color: var(--accent); }
+.admin-chip--empty    { color: #8a93a8; font-style: italic; }
+
+.admin-role-btn {
+  padding: 5px 10px;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.admin-role-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #00e5ff10;
+}
+.admin-role-btn--on {
+  background: #00e5ff20;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.admin-role-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.admin-assign-form {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #11161f;
+  border-radius: 8px;
+}
+.admin-assign-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #8a93a8;
+}
+.admin-assign-form select,
+.admin-assign-form input {
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.admin-assign-form select:focus,
+.admin-assign-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.admin-primary-btn {
+  padding: 10px 22px;
+  background: var(--accent);
+  border: none;
+  color: #000;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  height: fit-content;
+}
+.admin-primary-btn:hover:not(:disabled) { background: #00ffff; }
+.admin-primary-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+@media (max-width: 768px) {
+  .admin-main { padding: 20px; }
+  .admin-assign-form { grid-template-columns: 1fr; }
+  .admin-section { padding: 16px; }
+  .admin-table th:nth-child(2),
+  .admin-table td:nth-child(2) { display: none; }
+}
+
+/* ===========================================================================
+   Password reset — Sprint 4
+   ========================================================================= */
+
+.auth-forgot-link-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -4px;
+}
+.auth-forgot-link {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.auth-forgot-link:hover { color: #00ffff; }
+
+.auth-forgot-hint {
+  color: #8a93a8;
+  font-size: 13px;
+  margin: 0 0 12px;
+  line-height: 1.4;
+}
+
+.reset-main {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+.reset-card {
+  width: 100%;
+  max-width: 440px;
+  background: #0d1118;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  color: var(--text);
+}
+.reset-title {
+  font-size: 24px;
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+.reset-hint {
+  color: #8a93a8;
+  font-size: 13px;
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+.reset-form { display: flex; flex-direction: column; gap: 14px; }
+.reset-field { display: flex; flex-direction: column; gap: 6px; }
+.reset-field span {
+  font-size: 12px;
+  color: #8a93a8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.reset-field input {
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  font-size: 14px;
+}
+.reset-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.reset-msg {
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  margin: 0;
+}
+.reset-msg--ok {
+  background: #00ff8815;
+  border-color: #00ff88;
+  color: #00ff88;
+}
+.reset-msg--error {
+  background: #ff4d0015;
+  border-color: var(--accent2);
+  color: var(--accent2);
+}
+
+.reset-btn {
+  padding: 10px 22px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  margin-top: 12px;
+}
+.reset-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+  font-weight: 600;
+}
+.reset-btn--primary:hover:not(:disabled) { background: #00ffff; }
+.reset-btn:disabled { opacity: 0.5; cursor: not-allowed; }
