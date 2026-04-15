@@ -3,6 +3,7 @@ import Layout from './layouts/Layout';
 import GaleriaPage from './pages/GaleriaPage';
 import EstudiantesPage from './components/EstudiantesPage';
 import ProfilePage from './components/ProfilePage';
+import AdminPanel from './components/AdminPanel';
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
         <Route path="/" element={<GaleriaPage />} />
         <Route path="/estudiantes" element={<EstudiantesPage />} />
         <Route path="/perfil" element={<ProfilePage />} />
+        <Route path="/admin" element={<AdminPanel />} />
       </Route>
     </Routes>
   );

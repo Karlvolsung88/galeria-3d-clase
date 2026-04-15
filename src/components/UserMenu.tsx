@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { initAuth, onAuthStateChange, signOut, getMe, type Profile } from '../lib/api';
+import { initAuth, onAuthStateChange, signOut, getMe, isAdmin, type Profile } from '../lib/api';
 import AuthModal from './AuthModal';
 
 export default function UserMenu() {
@@ -85,9 +85,23 @@ export default function UserMenu() {
         <div className="usermenu-dropdown">
           <div className="usermenu-dropdown-header">
             <span className="usermenu-dropdown-name">{profile.full_name}</span>
-            <span className="usermenu-dropdown-role">{profile.role === 'admin' ? 'Admin' : 'Estudiante'}</span>
+            <span className="usermenu-dropdown-role">
+              {(profile.roles ?? [profile.role])
+                .map((r) => r === 'admin' ? 'Admin' : r === 'teacher' ? 'Profesor' : 'Estudiante')
+                .join(' · ')}
+            </span>
           </div>
           <div className="usermenu-dropdown-divider" />
+          {isAdmin(profile) && (
+            <Link to="/admin" className="usermenu-dropdown-item"
+              onClick={() => setOpen(false)}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 20h9"/>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+              Panel Admin
+            </Link>
+          )}
           <Link to="/perfil" className="usermenu-dropdown-item"
             onClick={() => setOpen(false)}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

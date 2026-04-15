@@ -9,6 +9,15 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Agregado
 
+- **Panel de administración `/admin` (Sprint 3.2)** — Nueva página React para gestión RBAC completa desde el frontend:
+  - Ruta `/admin` protegida con `isAdmin(user)`: redirige al home si no hay sesión, muestra pantalla "Acceso restringido" si autenticado pero sin rol admin.
+  - **Sección Usuarios & roles**: tabla con todos los usuarios, chips por rol (`admin` naranja, `teacher` morado, `student` cian), y 3 botones toggle `+/− admin|teacher|student`. Confirma por `window.confirm`, muestra feedback inline (ok/error), deshabilita botones mientras hay operación en curso, y surfaces el error "último admin" que viene del backend.
+  - **Sección Teacher↔Student**: formulario con 3 selects (teacher, estudiante, cohort opcional) + listado completo de estudiantes con su teacher actual (admin ve todos) y botón "Desasignar" por fila.
+  - Link "Panel Admin" en `UserMenu` (visible solo si `isAdmin(profile)`).
+  - `UserMenu` ahora muestra chips multi-rol en el dropdown header (`Admin · Profesor`).
+  - Estilos nuevos `admin-*` en `global.css` (tabla responsive, chips por rol, feedback banner, form grid).
+  - Archivos: `src/components/AdminPanel.tsx`, `src/App.tsx`, `src/components/UserMenu.tsx`, `src/styles/global.css`
+
 - **Frontend RBAC multi-rol — fundamentos (Sprint 3.1)** — `src/lib/api.ts` ampliado para soportar roles múltiples:
   - Tipos: `Role = 'admin' | 'teacher' | 'student'`, `AuthUser.roles[]`, `Profile.roles[]`, nuevos `AdminUser` y `TeacherStudent`.
   - Helpers: `isAdmin(u)`, `isTeacher(u)`, `isStudent(u)`, `hasRole(u, role)` — tolerantes a `null`/`undefined` y con fallback a `role` primario.
