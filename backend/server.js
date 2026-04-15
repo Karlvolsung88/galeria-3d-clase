@@ -267,23 +267,31 @@ app.post("/api/auth/forgot-password", async (req, res) => {
         from: process.env.RESEND_FROM || "Galeria 3D <onboarding@resend.dev>",
         to: user.email,
         subject: "Restablece tu contraseña — Galería 3D",
-        html: `
-          <div style="font-family: -apple-system, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; color: #1a1a1a;">
-            <h2 style="color: #0891b2;">Restablece tu contraseña</h2>
-            <p>Hola ${user.full_name},</p>
-            <p>Alguien (esperamos que tú) solicitó restablecer la contraseña de tu cuenta en la Galería 3D.</p>
-            <p>Para continuar, haz clic en el siguiente botón. El enlace expira en <strong>1 hora</strong>.</p>
-            <p style="margin: 28px 0;">
-              <a href="${resetUrl}" style="background: #0891b2; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600;">
-                Restablecer contraseña
-              </a>
-            </p>
-            <p style="color: #666; font-size: 13px;">O copia este enlace en tu navegador:<br/><code style="font-size: 12px;">${resetUrl}</code></p>
-            <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;" />
-            <p style="color: #999; font-size: 12px;">Si tú no hiciste esta solicitud, ignora este correo. Nadie podrá acceder a tu cuenta sin hacer clic en el enlace.</p>
-            <p style="color: #999; font-size: 12px;">— Estudio de Creación Digital IV · Universidad El Bosque</p>
-          </div>
-        `,
+        html: `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Restablece tu contraseña</title>
+</head>
+<body style="margin:0; padding:0; background:#f5f5f5;">
+  <div style="font-family: -apple-system, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; color: #1a1a1a; background:#ffffff;">
+    <h2 style="color: #0891b2;">Restablece tu contraseña</h2>
+    <p>Hola ${user.full_name},</p>
+    <p>Alguien (esperamos que tú) solicitó restablecer la contraseña de tu cuenta en la Galería 3D.</p>
+    <p>Para continuar, haz clic en el siguiente botón. El enlace expira en <strong>1 hora</strong>.</p>
+    <p style="margin: 28px 0;">
+      <a href="${resetUrl}" style="background: #0891b2; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600;">
+        Restablecer contraseña
+      </a>
+    </p>
+    <p style="color: #666; font-size: 13px;">O copia este enlace en tu navegador:<br/><code style="font-size: 12px;">${resetUrl}</code></p>
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;" />
+    <p style="color: #999; font-size: 12px;">Si tú no hiciste esta solicitud, ignora este correo. Nadie podrá acceder a tu cuenta sin hacer clic en el enlace.</p>
+    <p style="color: #999; font-size: 12px;">— Estudio de Creación Digital · CEOPAcademia</p>
+  </div>
+</body>
+</html>`,
       });
     } catch (mailErr) {
       console.error("Resend error:", mailErr);

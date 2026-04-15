@@ -7,7 +7,26 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Corregido
+
+- **Email de reset — charset UTF-8 + desvinculación de marca institucional** — Dos ajustes al template HTML del email de recuperación de contraseña en `backend/server.js`:
+  - **Mojibake arreglado**: el HTML no declaraba charset, por lo que Outlook (y otros clientes) interpretaban el cuerpo como Latin-1 / Windows-1252 y mostraban tildes y eñes como `�`. Fix: envolver el HTML en estructura completa (`<!DOCTYPE html>` + `<head>` con `<meta charset="UTF-8">`).
+  - **Footer rebrand**: se removió "Universidad El Bosque" del pie. Dado que el email se envía desde `noreply@ceopacademia.org` (no desde un dominio institucional), representar la marca de la U sería incorrecto. Queda: "— Estudio de Creación Digital · CEOPAcademia".
+  - Archivos: `backend/server.js`
+
+### Documentado
+
+- **Hallazgo bloqueante para prod — deliverability contra `@unbosque.edu.co`** — Durante el QA del Sprint 4, Resend reportó `delivered` pero los emails no llegaron al inbox institucional de Carlos, no aparecieron en spam, ni en la cuarentena de Microsoft Defender (`security.microsoft.com/quarantine`, 0 items incluso con "Show all senders"). Confirmación: el envío directo a un Outlook personal (`almeyda.ce@outlook.com`) llegó correctamente a "Correo no deseado" — validando que Resend + DKIM + SPF del dominio `ceopacademia.org` funcionan al 100%. Conclusión: El Bosque tiene una transport rule que dropea silenciosamente correos de dominios nuevos sin reputación. Implicaciones y opciones para resolver en prod:
+  - **A)** Coordinar con IT de El Bosque para agregar `ceopacademia.org` a la lista de remitentes permitidos (Allow List) en Office 365. Proceso institucional que puede tomar días.
+  - **B)** Agregar DMARC en DNS y dejar que el dominio acumule reputación con envíos legítimos (solución gradual, semanas).
+  - **C)** Plan operativo: el admin genera passwords temporales al crear estudiantes y las comunica por otro canal (Teams, presencial). El reset self-service queda como conveniencia cuando A/B estén resueltos.
+  - Este hallazgo extiende el checklist bloqueante de prod: además de rotar la `RESEND_API_KEY` (que quedó en el chat), hay que resolver deliverability antes de habilitar el flujo de reset para estudiantes.
+
+- **Rate limit del plan free de Resend — bloqueante adicional para prod** — Headers de respuesta del SDK revelan `x-resend-daily-quota: 5` y `x-resend-monthly-quota: 5`. El plan free está capado a 5 emails/día y 5/mes, insuficiente para un curso con ~25 estudiantes. Antes de habilitar el flujo reset en prod hay que hacer upgrade a un plan pagado (Resend Pro: USD 20/mes, 50K emails). Alternativa temporal mientras: plan operativo C (admin genera passwords manualmente y las comunica por otro canal).
+
 ### Agregado
+
+- **Dominio `ceopacademia.org` verificado en Resend** — Configurado vía integración OAuth con DigitalOcean (3 DNS records auto-creados: DKIM TXT `resend._domainkey`, MX `send` apuntando a SES de Amazon, SPF TXT `send`). Status `Verified` en Resend a las 10:36 PM del 2026-04-14. Backend actualizado en `.env` local: `RESEND_FROM=Galeria 3D <noreply@ceopacademia.org>` (reemplaza el default de dev `onboarding@resend.dev`). Envíos posteriores salen desde el dominio propio del proyecto.
 
 - **Panel Teacher `/teacher` (Sprint 5)** — Vista read-only para profesores con la lista de SUS estudiantes asignados. El backend (`GET /api/teacher/students`) ya filtraba por rol; el frontend suma la página y link en `UserMenu`. Si el usuario es admin, ve a todos los estudiantes con la columna "Profesor" extra (reutiliza el mismo endpoint que ya soportaba ambos casos).
   - Protección `isTeacher(user) || isAdmin(user)`, redirige a home si no hay sesión, muestra "Acceso restringido" si no cumple rol.
