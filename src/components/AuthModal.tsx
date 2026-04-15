@@ -184,17 +184,27 @@ export default function AuthModal({ onSuccess, onClose }: AuthModalProps) {
             </div>
           )}
 
-          {mode === 'login' && (
-            <div className="auth-forgot-link-row">
-              <button
-                type="button"
-                className="auth-forgot-link"
-                onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }}
-              >
-                ¿Olvidaste tu contraseña?
-              </button>
-            </div>
-          )}
+          {/*
+            Plan C operativo (2026-04-14): el link "¿Olvidaste tu contraseña?" está oculto
+            hasta que IT de El Bosque agregue ceopacademia.org a la whitelist de Office 365
+            + se haga upgrade del plan Resend (free está en 5/día, 5/mes).
+            Mientras tanto, el admin genera passwords temporales desde /admin y las comunica
+            por Teams/clase. Los endpoints /api/auth/forgot-password y /reset-password siguen
+            funcionales en backend — solo se oculta la entrada en la UI.
+            Para re-habilitar: descomentar este bloque.
+
+            {mode === 'login' && (
+              <div className="auth-forgot-link-row">
+                <button
+                  type="button"
+                  className="auth-forgot-link"
+                  onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }}
+                >
+                  ¿Olvidaste tu contraseña?
+                </button>
+              </div>
+            )}
+          */}
 
           {error && (
             <p className="auth-message auth-error">{error}</p>

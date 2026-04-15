@@ -7,6 +7,11 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Cambiado
+
+- **Plan C operativo para reset de contraseña** — Ocultado el link "¿Olvidaste tu contraseña?" en `AuthModal` (mode login). Decisión tomada ante dos bloqueantes no resueltos para prod: (1) `@unbosque.edu.co` dropea silenciosamente correos de `ceopacademia.org` (transport rule institucional), y (2) Resend free está capado a 5 emails/día y 5/mes. Mientras se coordina con IT de El Bosque para whitelistar el dominio + upgrade a Resend Pro, el admin genera passwords temporales desde `/admin` (o SQL) y las comunica a los estudiantes por otro canal (Teams, presencial). **Los endpoints `/api/auth/forgot-password` y `/api/auth/reset-password` siguen funcionales en backend** — solo se oculta la entrada en la UI. Para re-habilitar cuando desbloqueen IT + Resend: descomentar el bloque en `src/components/AuthModal.tsx`.
+  - Archivos: `src/components/AuthModal.tsx`
+
 ### Corregido
 
 - **Email de reset — charset UTF-8 + desvinculación de marca institucional** — Dos ajustes al template HTML del email de recuperación de contraseña en `backend/server.js`:
