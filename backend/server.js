@@ -89,6 +89,29 @@ function hasAnyRole(req, ...allowed) {
 }
 
 // ============================================================
+// --- Password utils ---
+// ============================================================
+
+/**
+ * Genera una password temporal legible para uso administrativo (Plan C).
+ * Formato: XXXX-XXXX-XXXX (12 chars + 2 guiones).
+ * Alfabeto sin caracteres ambiguos (sin O/0, l/1, I) — reduce errores al
+ * copiar/tipear la password desde un mensaje de Teams.
+ *
+ * Entropía: ~70 bits (55^12) — suficiente para password de corta vida que el
+ * estudiante debe cambiar en su primer login (must_change_password=true).
+ *
+ * Usa crypto.randomBytes (CSPRNG), NO Math.random.
+ */
+function generateSecurePassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  const bytes = crypto.randomBytes(12);
+  let raw = "";
+  for (let i = 0; i < 12; i++) raw += alphabet[bytes[i] % alphabet.length];
+  return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`;
+}
+
+// ============================================================
 // --- Auth Middlewares ---
 // ============================================================
 
@@ -183,6 +206,7 @@ app.post("/api/auth/login", async (req, res) => {
         roles,
         role: primaryRole(roles),
         email: user.email,
+        must_change_password: user.must_change_password === true,
       },
     });
   } catch (err) {
@@ -194,12 +218,18 @@ app.post("/api/auth/login", async (req, res) => {
 app.get("/api/auth/me", auth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, full_name, email, artstation_url, instagram_url, bio, created_at FROM profiles WHERE id = $1",
+      "SELECT id, full_name, email, artstation_url, instagram_url, bio, created_at, must_change_password FROM profiles WHERE id = $1",
       [req.user.id]
     );
     if (!rows.length) return res.status(404).json({ error: "Usuario no encontrado" });
     const roles = await getUserRoles(req.user.id);
-    res.json({ ...rows[0], roles, role: primaryRole(roles) });
+    const profile = rows[0];
+    res.json({
+      ...profile,
+      roles,
+      role: primaryRole(roles),
+      must_change_password: profile.must_change_password === true,
+    });
   } catch (err) {
     res.status(500).json({ error: "Error interno" });
   }
@@ -359,6 +389,45 @@ app.post("/api/auth/reset-password", async (req, res) => {
     res.json({ ok: true, message: "Contraseña actualizada" });
   } catch (err) {
     console.error("Reset-password error:", err);
+    res.status(500).json({ error: "Error interno" });
+  }
+});
+
+/**
+ * Cambio de password por el propio usuario autenticado.
+ * Verifica current_password para prevenir hijack con un token robado.
+ * Al completarse limpia must_change_password=false (Plan C flow).
+ * Body: { current_password, new_password }
+ */
+app.post("/api/auth/change-password", auth, async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body;
+    if (!current_password || !new_password) {
+      return res.status(400).json({ error: "current_password y new_password son requeridos" });
+    }
+    if (typeof new_password !== "string" || new_password.length < 6) {
+      return res.status(400).json({ error: "La nueva contraseña debe tener al menos 6 caracteres" });
+    }
+
+    const { rows } = await pool.query(
+      "SELECT id, password_hash FROM profiles WHERE id = $1",
+      [req.user.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Usuario no encontrado" });
+    const user = rows[0];
+
+    const valid = await bcrypt.compare(current_password, user.password_hash);
+    if (!valid) return res.status(401).json({ error: "Contraseña actual incorrecta" });
+
+    const newHash = await bcrypt.hash(new_password, 10);
+    await pool.query(
+      "UPDATE profiles SET password_hash = $1, must_change_password = false WHERE id = $2",
+      [newHash, user.id]
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Change-password error:", err);
     res.status(500).json({ error: "Error interno" });
   }
 });
@@ -711,6 +780,124 @@ app.put("/api/models/:id/thumbnail", auth, upload.single("thumbnail"), async (re
 // ============================================================
 // --- ADMIN ROUTES (gestión de roles y usuarios) ---
 // ============================================================
+
+/**
+ * Crear usuario nuevo con password temporal generada (Plan C).
+ * Body: { email, full_name, role } donde role ∈ {student, teacher, admin}
+ * Response (201): { user, temp_password }
+ *
+ * IMPORTANTE: temp_password se devuelve UNA VEZ aquí. El frontend debe
+ * mostrarla al admin para que la copie y la envíe por Teams al estudiante.
+ * No se guarda en claro en ningún otro lugar.
+ */
+app.post("/api/admin/users", auth, requireRole("admin"), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { email, full_name, role } = req.body;
+    if (!email || !full_name || !role) {
+      return res.status(400).json({ error: "email, full_name y role son requeridos" });
+    }
+    if (!["student", "teacher", "admin"].includes(role)) {
+      return res.status(400).json({ error: "role inválido" });
+    }
+    // Validación de dominio — mejor mensaje que dejar que la DB tire el CHECK
+    if (!/^[^@]+@(unbosque\.edu\.co|ceopacademia\.org)$/.test(email)) {
+      return res.status(400).json({ error: "Solo se permiten correos @unbosque.edu.co o @ceopacademia.org" });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const tempPassword = generateSecurePassword();
+    const hash = await bcrypt.hash(tempPassword, 10);
+
+    await client.query("BEGIN");
+
+    // 1) Insertar profile con flag forzado
+    // NOTA: profiles.role solo acepta {admin, student} por CHECK heredado.
+    // Para teachers, guardamos 'student' como rol principal en profiles.role
+    // y confiamos en user_roles (RBAC multi-rol) como fuente de verdad.
+    const profileRole = role === "teacher" ? "student" : role;
+    const { rows: [newUser] } = await client.query(
+      `INSERT INTO profiles (full_name, email, password_hash, role, must_change_password)
+       VALUES ($1, $2, $3, $4, true)
+       RETURNING id, full_name, email, role`,
+      [full_name.trim(), normalizedEmail, hash, profileRole]
+    );
+
+    // 2) Asignar role en tabla pivote user_roles (consistencia RBAC multi-rol)
+    await client.query(
+      `INSERT INTO user_roles (user_id, role_id, assigned_by)
+       SELECT $1, id, $2 FROM roles WHERE name = $3`,
+      [newUser.id, req.user.id, role]
+    );
+
+    await client.query("COMMIT");
+
+    console.log(`[ADMIN] ${req.user.email} creó usuario ${newUser.email} (${role})`);
+
+    res.status(201).json({
+      user: { ...newUser, role, roles: [role] },
+      temp_password: tempPassword,
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "El email ya está registrado" });
+    }
+    console.error("Admin create user error:", err);
+    res.status(500).json({ error: "Error interno" });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * Reset manual de password — el admin genera una nueva password temporal
+ * para un usuario existente (Plan C flow). Marca must_change_password=true
+ * para que el usuario deba cambiarla en su próximo login.
+ * Invalida además cualquier token de reset self-service pendiente.
+ * Response (200): { temp_password }
+ */
+app.post("/api/admin/users/:id/reset-password", auth, requireRole("admin"), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const userId = req.params.id;
+
+    const { rows } = await client.query(
+      "SELECT id, email FROM profiles WHERE id = $1",
+      [userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Usuario no encontrado" });
+    const user = rows[0];
+
+    const tempPassword = generateSecurePassword();
+    const hash = await bcrypt.hash(tempPassword, 10);
+
+    await client.query("BEGIN");
+
+    await client.query(
+      "UPDATE profiles SET password_hash = $1, must_change_password = true WHERE id = $2",
+      [hash, userId]
+    );
+
+    // Invalidar tokens de reset self-service pendientes (higiene)
+    await client.query(
+      "UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL",
+      [userId]
+    );
+
+    await client.query("COMMIT");
+
+    console.log(`[ADMIN] ${req.user.email} reseteó password de ${user.email}`);
+
+    res.json({ temp_password: tempPassword });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Admin reset password error:", err);
+    res.status(500).json({ error: "Error interno" });
+  } finally {
+    client.release();
+  }
+});
 
 // Listar todos los usuarios con sus roles
 app.get("/api/admin/users", auth, requireRole("admin"), async (req, res) => {
