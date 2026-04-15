@@ -7,6 +7,37 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [3.2.0] — 2026-04-15
+
+Release menor que completa el Plan C operativo de passwords: ahora el admin puede crear usuarios desde `/admin` con una password temporal generada automáticamente, resetearla manualmente cuando un estudiante la olvide, y el usuario es forzado a cambiarla en su primer login. Elimina la dependencia del canal email (Resend + whitelist IT) para onboarding y recuperación, dejando todo el flujo dentro del sistema.
+
+### Agregado
+
+- **Generación de passwords temporales desde el Panel Admin** — Nueva sección "Crear usuario" en `/admin` que permite al administrador dar de alta cualquier usuario (student / teacher / admin) con email institucional + nombre. El backend genera una password aleatoria segura (`crypto.randomBytes`, alfabeto de 55 chars sin ambiguos visuales tipo `O/0/l/1`, formato `XXXX-XXXX-XXXX`, ~70 bits de entropía) y la devuelve UNA SOLA VEZ en la respuesta. El frontend monta un modal verde prominente con botón "Copiar al portapapeles", aviso de que no se volverá a mostrar, y checkbox de confirmación explícita antes de cerrar. El admin copia la password y la comunica al usuario por Teams o presencial.
+  - Archivos: `backend/server.js` (helper `generateSecurePassword()` + `POST /api/admin/users`), `src/lib/api.ts` (`adminCreateUser`), `src/components/TempPasswordModal.tsx` (nuevo), `src/components/AdminPanel.tsx` (sección UI + handler).
+
+- **Reset manual de passwords desde el Panel Admin** — Nuevo botón "🔑 Reset" en cada fila de la tabla de usuarios. Genera una nueva password temporal (mismo formato que creación), reemplaza el hash, marca el flag `must_change_password=true` e invalida cualquier token de reset self-service pendiente en `password_reset_tokens` (higiene). Reutiliza el mismo modal verde de "shown once" — el admin copia y comunica. Cubre tanto el onboarding inicial de los 8 estudiantes existentes como recuperación cuando olviden su password.
+  - Archivos: `backend/server.js` (`POST /api/admin/users/:id/reset-password`), `src/lib/api.ts` (`adminResetUserPassword`), `src/components/AdminPanel.tsx` (botón + handler `handleResetUserPassword`).
+
+- **Modal forzado de cambio de password al primer login** — Cuando un usuario ingresa con una password generada por el admin, el backend (`POST /api/auth/login` y `GET /api/auth/me`) devuelve `must_change_password: true`. El `Layout` suscribe a `onAuthStateChange` y monta `<ChangePasswordModal>` como overlay global sobre cualquier ruta activa. El modal pide: contraseña temporal (para verificar que el usuario la conozca — anti-hijack), nueva contraseña (mínimo 6 chars, sin requisitos de complejidad — UX simple para estudiantes), y confirmación. No puede cerrarse con ESC, click-outside, ni botón X — el usuario debe completar el cambio o hacer logout. Al completarse, el backend pone `must_change_password=false`, el frontend llama `clearMustChangePassword()` para limpiar el estado en memoria, y el modal desmonta.
+  - Archivos: `backend/server.js` (`POST /api/auth/change-password`), `src/lib/api.ts` (`changePassword`, `clearMustChangePassword`), `src/components/ChangePasswordModal.tsx` (nuevo), `src/layouts/Layout.tsx` (integración global).
+
+- **Migración 003 — columna `must_change_password`** — `ALTER TABLE profiles ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT false`. Usuarios existentes arrancan en `false` (ya eligieron su password en auto-registro); los creados por admin o reseteados arrancan en `true`; se pone en `false` al completar el cambio. Bloque `DO` con validación que aborta la migración si encuentra usuarios con el flag ya en `true` (higiene). Comentario explicativo en la columna para documentar la semántica directamente en el schema.
+  - Archivos: `migrations/003_must_change_password.sql`.
+
+### Cambiado
+
+- **`POST /api/auth/login` y `GET /api/auth/me`** — ambos endpoints ahora incluyen `must_change_password: boolean` en la respuesta del user. No se incluye en el JWT (sería inválido tras el cambio sin re-login); va solo en el payload del user para que el frontend decida si abrir el modal forzado.
+  - Archivos: `backend/server.js`, `src/lib/api.ts` (`AuthUser` y `Profile` interfaces + `initAuth` rehydrate).
+
+### Técnico
+
+- **Decisión de diseño — password temporal legible sin ambigüedades visuales** — El alfabeto de `generateSecurePassword()` excluye `O/0`, `l/1/I` para reducir errores de lectura cuando el estudiante recibe la password por Teams en fuente no monoespaciada. Formato `XXXX-XXXX-XXXX` (12 chars + 2 guiones visuales) facilita la copia verbal en caso extremo. Entropía ~70 bits es aceptable para passwords de corta vida (el usuario debe cambiarla al primer login).
+
+- **Decisión de diseño — dominio de email admitido en `POST /api/admin/users`** — La validación acepta `@unbosque.edu.co` y `@ceopacademia.org` (matching el CHECK `email_domain_check` de prod). En local el CHECK solo acepta `@unbosque.edu.co`; se confía en la DB como última línea de defensa si el admin intenta crear fuera de dominio permitido.
+
+- **Decisión de diseño — profiles.role para rol "teacher"** — La tabla `profiles` tiene un CHECK heredado que solo admite `{admin, student}` en la columna legacy `role`. Cuando el admin crea un teacher desde `/admin`, en `profiles.role` queda `student` (valor placeholder), pero en `user_roles` (la tabla pivote RBAC multi-rol, fuente de verdad) queda `teacher`. El código frontend ya usa `roles` como fuente de verdad para decisiones.
+
 ## [3.1.0] — 2026-04-14
 
 Release mayor con RBAC multi-rol, Panel Admin y Panel Teacher, sistema de reset de password (preparado, con link oculto en Plan C operativo), dominio `ceopacademia.org` verificado en Resend, y hardening de auth. Desplegado al droplet `159.203.189.167` con backup completo (pg_dump + copia de `/var/www/galeria-frontend`).
