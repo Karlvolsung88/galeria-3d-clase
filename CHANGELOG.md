@@ -9,6 +9,9 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Técnico
 
+- **Migración 002 — Backfill de emails institucionales (DB local)** — Los 7 estudiantes migrados desde producción no tenían `profiles.email` (columna vacía en el dump original). Bloqueante para Sprint 4 (password reset). Migración transaccional aplicada sobre `galeria_3d_local`: 7 UPDATEs por `full_name` exacto + bloque DO con validación `7/7 estudiantes con email institucional` antes del COMMIT. Todos los emails cumplen el CHECK `email_domain_check` (`@unbosque.edu.co`). Archivo reutilizable en Fase 2 (prod) con `psql --single-transaction -f migrations/002_backfill_student_emails.sql`.
+  - Archivos: `migrations/002_backfill_student_emails.sql`
+
 - **QA manual Sprint 3 RBAC — 5/5 PASS en local** — End-to-end validado en `localhost:5173` + backend `localhost:3000` + DB `galeria_3d_local`. Tests: (Q1) login admin + panel con 8 usuarios y chips multi-rol, (Q2) asignación teacher↔student de los 7 estudiantes a Carlos, (Q3) salvaguarda último admin retorna banner error sin mutar estado, (Q4) student logueado no ve link "Panel Admin", (Q5) student accediendo a `/admin` por URL ve "Acceso restringido". Defensa en profundidad confirmada en 3 capas (DB → Backend → Frontend). Usuario de pruebas `Job Dante Alegria` (`jdalegria@unbosque.edu.co`) creado vía `POST /api/auth/register` para validar flujo Register real — **existe solo en DB local**, no se propaga a prod.
   - Archivos: `docs/session-logs/2026-04-14.md`
 
