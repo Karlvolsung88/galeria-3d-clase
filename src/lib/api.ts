@@ -16,6 +16,8 @@ export interface AuthUser {
   role: Role;
   roles: Role[];
   email: string;
+  /** Flag Plan C: true cuando admin generó password temporal — frontend debe forzar cambio. */
+  must_change_password?: boolean;
 }
 
 export interface Profile {
@@ -29,6 +31,8 @@ export interface Profile {
   artstation_url?: string | null;
   instagram_url?: string | null;
   bio?: string | null;
+  /** Flag Plan C: true cuando admin generó password temporal. */
+  must_change_password?: boolean;
 }
 
 /** Usuario devuelto por GET /api/admin/users (incluye array agregado de roles). */
@@ -226,11 +230,24 @@ export async function initAuth(): Promise<{ user: AuthUser | null; profile: Prof
       role: profile.role,
       roles: profile.roles ?? [profile.role],
       email: profile.email || '',
+      must_change_password: profile.must_change_password === true,
     };
     return { user: currentUser, profile };
   } catch {
     signOut();
     return { user: null, profile: null };
+  }
+}
+
+/**
+ * Limpia el flag must_change_password del currentUser en memoria.
+ * Se llama tras un changePassword exitoso para cerrar el modal forzado
+ * sin necesidad de re-login (el backend ya puso el flag a false en DB).
+ */
+export function clearMustChangePassword() {
+  if (currentUser) {
+    currentUser = { ...currentUser, must_change_password: false };
+    notifyAuthListeners();
   }
 }
 
@@ -396,6 +413,18 @@ export async function resetPassword(token: string, newPassword: string): Promise
   });
 }
 
+/**
+ * Cambio de password por el propio usuario autenticado (Plan C flow).
+ * Requiere current_password para verificación anti-hijack.
+ * El backend limpia must_change_password=false al completarse.
+ */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+}
+
 // --- Admin: gestión de usuarios y roles ---
 export async function getAdminUsers(): Promise<AdminUser[]> {
   return apiFetch<AdminUser[]>('/admin/users');
@@ -423,6 +452,35 @@ export async function removeRole(userId: string, role: Role): Promise<{ ok: bool
     const err = e as Error;
     return { ok: false, error: err.message };
   }
+}
+
+/**
+ * Admin crea un usuario nuevo con password temporal generada por backend.
+ * Response incluye `temp_password` en claro — mostrar UNA VEZ al admin
+ * para que copie y envíe por Teams (Plan C). El usuario creado queda con
+ * must_change_password=true y debe cambiarla en su primer login.
+ */
+export async function adminCreateUser(input: {
+  email: string;
+  full_name: string;
+  role: Role;
+}): Promise<{ user: AdminUser; temp_password: string }> {
+  return apiFetch<{ user: AdminUser; temp_password: string }>('/admin/users', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Admin resetea la password de un usuario existente.
+ * Backend genera una nueva password temporal (retornada en claro UNA VEZ),
+ * marca must_change_password=true y limpia tokens de reset self-service
+ * pendientes.
+ */
+export async function adminResetUserPassword(userId: string): Promise<{ temp_password: string }> {
+  return apiFetch<{ temp_password: string }>(`/admin/users/${userId}/reset-password`, {
+    method: 'POST',
+  });
 }
 
 // --- Teacher/Admin: relación profesor↔estudiante ---

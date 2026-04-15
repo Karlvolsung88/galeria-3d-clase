@@ -8,15 +8,24 @@ import {
   getTeacherStudents,
   assignStudentToTeacher,
   unassignStudentFromTeacher,
+  adminCreateUser,
+  adminResetUserPassword,
   isAdmin,
   type AdminUser,
   type TeacherStudent,
   type Role,
 } from '../lib/api';
+import TempPasswordModal from './TempPasswordModal';
 
 const ALL_ROLES: Role[] = ['admin', 'teacher', 'student'];
 
 type Feedback = { kind: 'ok' | 'error'; msg: string } | null;
+
+type TempPasswordState = {
+  title: string;
+  userLabel: string;
+  tempPassword: string;
+} | null;
 
 export default function AdminPanel() {
   const navigate = useNavigate();
@@ -31,6 +40,14 @@ export default function AdminPanel() {
   const [selTeacher, setSelTeacher] = useState<string>('');
   const [selStudent, setSelStudent] = useState<string>('');
   const [cohort, setCohort] = useState<string>('');
+
+  // Form crear usuario (Plan C)
+  const [newEmail, setNewEmail] = useState<string>('');
+  const [newFullName, setNewFullName] = useState<string>('');
+  const [newRole, setNewRole] = useState<Role>('student');
+
+  // Modal password temporal (shown once — creación o reset)
+  const [tempPwd, setTempPwd] = useState<TempPasswordState>(null);
 
   // --- Bootstrap + protección ---
   useEffect(() => {
@@ -135,6 +152,64 @@ export default function AdminPanel() {
     await reload();
   }
 
+  async function handleCreateUser(e: React.FormEvent) {
+    e.preventDefault();
+    const email = newEmail.trim().toLowerCase();
+    const fullName = newFullName.trim();
+    if (!email || !fullName) {
+      setFeedback({ kind: 'error', msg: 'Email y nombre son requeridos' });
+      return;
+    }
+    setBusy('create-user');
+    setFeedback(null);
+    try {
+      const { user, temp_password } = await adminCreateUser({
+        email,
+        full_name: fullName,
+        role: newRole,
+      });
+      setTempPwd({
+        title: 'Usuario creado',
+        userLabel: `${user.full_name} (${user.email})`,
+        tempPassword: temp_password,
+      });
+      // Reset form
+      setNewEmail('');
+      setNewFullName('');
+      setNewRole('student');
+      await reload();
+    } catch (err) {
+      const msg = (err as Error).message || 'No se pudo crear el usuario';
+      setFeedback({ kind: 'error', msg });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleResetUserPassword(user: AdminUser) {
+    if (!confirm(
+      `¿Generar una nueva contraseña temporal para ${user.full_name}?\n\n` +
+      `La contraseña actual dejará de funcionar. El usuario deberá cambiar ` +
+      `la nueva contraseña en su próximo inicio de sesión.`
+    )) return;
+
+    setBusy(`reset-pwd:${user.id}`);
+    setFeedback(null);
+    try {
+      const { temp_password } = await adminResetUserPassword(user.id);
+      setTempPwd({
+        title: 'Contraseña reseteada',
+        userLabel: `${user.full_name} (${user.email})`,
+        tempPassword: temp_password,
+      });
+    } catch (err) {
+      const msg = (err as Error).message || 'No se pudo resetear la contraseña';
+      setFeedback({ kind: 'error', msg });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   // --- Render ---
   if (authorized === null) {
     return <div className="admin-loading">Verificando permisos…</div>;
@@ -169,6 +244,59 @@ export default function AdminPanel() {
         <div className="admin-loading">Cargando…</div>
       ) : (
         <>
+          {/* Sección 0: Crear usuario (Plan C — admin genera password temporal) */}
+          <section className="admin-section">
+            <h2 className="admin-section-title">Crear usuario</h2>
+            <p className="admin-subtitle" style={{ marginTop: 0, marginBottom: 12 }}>
+              El sistema generará una contraseña temporal. Cópiala y envíala al usuario
+              por Teams — él deberá cambiarla en su primer inicio de sesión.
+            </p>
+
+            <form className="admin-assign-form" onSubmit={handleCreateUser}>
+              <label>
+                Email institucional
+                <input
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder="correo@unbosque.edu.co"
+                  required
+                  disabled={busy !== null}
+                />
+              </label>
+              <label>
+                Nombre completo
+                <input
+                  type="text"
+                  value={newFullName}
+                  onChange={(e) => setNewFullName(e.target.value)}
+                  placeholder="Ej: Juan Pérez"
+                  required
+                  disabled={busy !== null}
+                />
+              </label>
+              <label>
+                Rol
+                <select
+                  value={newRole}
+                  onChange={(e) => setNewRole(e.target.value as Role)}
+                  disabled={busy !== null}
+                >
+                  <option value="student">student</option>
+                  <option value="teacher">teacher</option>
+                  <option value="admin">admin</option>
+                </select>
+              </label>
+              <button
+                type="submit"
+                className="admin-primary-btn"
+                disabled={busy !== null}
+              >
+                {busy === 'create-user' ? 'Creando…' : 'Crear y generar contraseña'}
+              </button>
+            </form>
+          </section>
+
           {/* Sección 1: Usuarios y roles */}
           <section className="admin-section">
             <h2 className="admin-section-title">Usuarios &amp; roles ({users.length})</h2>
@@ -213,6 +341,14 @@ export default function AdminPanel() {
                               </button>
                             );
                           })}
+                          <button
+                            className="admin-role-btn"
+                            onClick={() => handleResetUserPassword(u)}
+                            disabled={busy !== null}
+                            title="Generar nueva contraseña temporal"
+                          >
+                            {busy === `reset-pwd:${u.id}` ? '…' : '🔑 Reset'}
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -315,6 +451,15 @@ export default function AdminPanel() {
             </div>
           </section>
         </>
+      )}
+
+      {tempPwd && (
+        <TempPasswordModal
+          title={tempPwd.title}
+          userLabel={tempPwd.userLabel}
+          tempPassword={tempPwd.tempPassword}
+          onClose={() => setTempPwd(null)}
+        />
       )}
     </main>
   );
