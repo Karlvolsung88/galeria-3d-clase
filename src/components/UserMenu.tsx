@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { initAuth, onAuthStateChange, signOut, getMe, isAdmin, type Profile } from '../lib/api';
+import { initAuth, onAuthStateChange, signOut, getMe, isAdmin, isTeacher, type Profile } from '../lib/api';
 import AuthModal from './AuthModal';
 
 export default function UserMenu() {
@@ -100,6 +100,18 @@ export default function UserMenu() {
                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
               </svg>
               Panel Admin
+            </Link>
+          )}
+          {isTeacher(profile) && (
+            <Link to="/teacher" className="usermenu-dropdown-item"
+              onClick={() => setOpen(false)}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              Mis estudiantes
             </Link>
           )}
           <Link to="/perfil" className="usermenu-dropdown-item"

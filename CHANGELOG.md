@@ -7,6 +7,29 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Agregado
+
+- **Panel Teacher `/teacher` (Sprint 5)** — Vista read-only para profesores con la lista de SUS estudiantes asignados. El backend (`GET /api/teacher/students`) ya filtraba por rol; el frontend suma la página y link en `UserMenu`. Si el usuario es admin, ve a todos los estudiantes con la columna "Profesor" extra (reutiliza el mismo endpoint que ya soportaba ambos casos).
+  - Protección `isTeacher(user) || isAdmin(user)`, redirige a home si no hay sesión, muestra "Acceso restringido" si no cumple rol.
+  - Empty state distinto para teacher ("Aún no tienes estudiantes asignados") vs admin ("No hay estudiantes registrados todavía").
+  - Fecha `assigned_at` formateada en español + link "Ver perfil" a `/estudiantes?focus={id}` por cada estudiante.
+  - Link "Mis estudiantes" en `UserMenu` visible solo para `isTeacher(profile)` (puede aparecer junto a "Panel Admin" si el usuario tiene ambos roles, como Carlos).
+  - Reutiliza los estilos `admin-*` existentes — sin CSS nuevo.
+  - Archivos: `src/components/TeacherPanel.tsx`, `src/App.tsx`, `src/components/UserMenu.tsx`
+
+- **Sistema de reset de contraseña (Sprint 4)** — Flujo completo para que los estudiantes recuperen acceso sin depender del admin.
+  - **Backend**: dos endpoints nuevos en `server.js`:
+    - `POST /api/auth/forgot-password` — genera token crudo de 32 bytes hex, guarda solo SHA-256 en `password_reset_tokens` con TTL de 1 hora, registra `ip_address` + `user_agent` para forense. Envía email HTML via Resend. **Respuesta siempre 200** (no revela si el email existe → previene enumeration). Si no hay `RESEND_API_KEY`, loguea el link a consola para dev.
+    - `POST /api/auth/reset-password` — verifica hash, expiración y `used_at IS NULL`. Actualiza `profiles.password_hash` con bcrypt(10) + marca token usado + invalida cualquier otro token vigente del mismo usuario, todo en transacción.
+  - **Frontend**:
+    - `AuthModal` ahora tiene 3 modos: `login`, `register`, `forgot`. Link "¿Olvidaste tu contraseña?" en el modo login.
+    - Nueva ruta `/reset-password?token=...` con página dedicada (`ResetPasswordPage`) — valida que token exista, pide nueva contraseña con confirmación, muestra feedback ok/error, redirige a home tras 2.5s en éxito.
+    - Funciones API: `requestPasswordReset(email)`, `resetPassword(token, newPassword)`.
+  - **Email**: HTML responsive con el link (copiable como texto abajo como fallback), marca institucional.
+  - **Dependencia nueva**: `resend` (7 paquetes, 0 vulnerabilidades).
+  - **Credenciales**: `RESEND_API_KEY` + `RESEND_FROM` + `APP_URL` en `backend/.env` (placeholder en `.env.example`). En dev, `RESEND_FROM=onboarding@resend.dev` funciona sin verificar dominio. En prod habrá que verificar `ceopacademia.org` en Resend y usar algo tipo `noreply@ceopacademia.org`.
+  - Archivos: `backend/server.js`, `backend/.env.example`, `backend/package.json`, `backend/package-lock.json`, `src/lib/api.ts`, `src/components/AuthModal.tsx`, `src/components/ResetPasswordPage.tsx`, `src/App.tsx`, `src/styles/global.css`
+
 ### Técnico
 
 - **Migración 002 — Backfill de emails institucionales (DB local)** — Los 7 estudiantes migrados desde producción no tenían `profiles.email` (columna vacía en el dump original). Bloqueante para Sprint 4 (password reset). Migración transaccional aplicada sobre `galeria_3d_local`: 7 UPDATEs por `full_name` exacto + bloque DO con validación `7/7 estudiantes con email institucional` antes del COMMIT. Todos los emails cumplen el CHECK `email_domain_check` (`@unbosque.edu.co`). Archivo reutilizable en Fase 2 (prod) con `psql --single-transaction -f migrations/002_backfill_student_emails.sql`.
