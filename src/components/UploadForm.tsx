@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import ModelScene from './ModelScene';
 import ThumbnailCapture from './ThumbnailCapture';
-import { createModel } from '../lib/api';
+import { createModel, getCurrentUser } from '../lib/api';
 
 interface UploadFormProps {
   onSuccess: () => void;
@@ -18,7 +18,10 @@ const categoryOptions = [
 
 export default function UploadForm({ onSuccess, onClose }: UploadFormProps) {
   const [title, setTitle] = useState('');
-  const [student, setStudent] = useState('');
+  // El nombre del estudiante se toma del usuario logueado — el endpoint
+  // POST /api/models requiere auth y vincula el modelo a req.user.id, así que
+  // no tiene sentido pedir el nombre en el formulario (ya está en profiles).
+  const [student] = useState(() => getCurrentUser()?.full_name ?? '');
   const [category, setCategory] = useState('objeto');
   const [description, setDescription] = useState('');
   const [tagsInput, setTagsInput] = useState('');
@@ -166,17 +169,6 @@ export default function UploadForm({ onSuccess, onClose }: UploadFormProps) {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Ej: Espada Vikinga"
-                disabled={loading}
-              />
-            </div>
-
-            <div className="upload-field">
-              <label>Nombre del estudiante *</label>
-              <input
-                type="text"
-                value={student}
-                onChange={(e) => setStudent(e.target.value)}
-                placeholder="Ej: Juan Pérez"
                 disabled={loading}
               />
             </div>
