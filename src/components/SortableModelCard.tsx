@@ -12,6 +12,8 @@ interface SortableModelCardProps {
   modelUrl: string;
   thumbnailUrl?: string | null;
   canEdit: boolean;
+  hasShowcase?: boolean;
+  canManageShowcase?: boolean;
   likeCount: number;
   commentCount: number;
   isLiked: boolean;
@@ -19,6 +21,7 @@ interface SortableModelCardProps {
   onClick: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onShowcase?: () => void;
 }
 
 export default function SortableModelCard({ id, reorderMode, ...props }: SortableModelCardProps) {

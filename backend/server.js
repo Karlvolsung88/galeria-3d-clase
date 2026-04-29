@@ -553,7 +553,8 @@ app.post(
       const thumbnail = req.files?.thumbnail?.[0];
 
       if (!mview) return res.status(400).json({ error: "Archivo .mview requerido" });
-      if (!thumbnail) return res.status(400).json({ error: "Imagen de portada requerida" });
+      // Thumbnail es OPCIONAL — Marmoset Toolbag puede incluir poster embebido
+      // en el .mview, y el frontend tiene fallback al thumbnail del .glb del estudiante.
 
       // Verificar que el modelo existe (FK implícita)
       const { rows: existing } = await pool.query("SELECT id, title FROM models WHERE id = $1", [id]);
@@ -561,11 +562,9 @@ app.post(
 
       const timestamp = Date.now();
       const mviewKey = `models/${timestamp}-${mview.originalname}`;
-      const thumbExt = thumbnail.originalname.match(/\.(png|jpg|jpeg|webp)$/i)?.[0] || ".png";
-      const thumbKey = `thumbnails/${timestamp}-showcase${thumbExt}`;
 
-      // Subir ambos en paralelo (independientes)
-      await Promise.all([
+      // Uploads paralelos: .mview siempre, thumbnail opcional.
+      const uploads = [
         s3.send(new PutObjectCommand({
           Bucket: process.env.SPACES_BUCKET,
           Key: mviewKey,
@@ -573,17 +572,25 @@ app.post(
           ContentType: "application/octet-stream",
           ACL: "public-read",
         })),
-        s3.send(new PutObjectCommand({
+      ];
+
+      let mview_thumbnail_url = null;
+      if (thumbnail) {
+        const thumbExt = thumbnail.originalname.match(/\.(png|jpg|jpeg|webp)$/i)?.[0] || ".png";
+        const thumbKey = `thumbnails/${timestamp}-showcase${thumbExt}`;
+        uploads.push(s3.send(new PutObjectCommand({
           Bucket: process.env.SPACES_BUCKET,
           Key: thumbKey,
           Body: thumbnail.buffer,
           ContentType: thumbnail.mimetype,
           ACL: "public-read",
-        })),
-      ]);
+        })));
+        mview_thumbnail_url = `/cdn/${thumbKey}`;
+      }
+
+      await Promise.all(uploads);
 
       const mview_url = `/cdn/${mviewKey}`;
-      const mview_thumbnail_url = `/cdn/${thumbKey}`;
 
       const { rows } = await pool.query(
         `UPDATE models

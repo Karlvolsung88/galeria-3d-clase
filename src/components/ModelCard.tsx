@@ -8,6 +8,10 @@ interface ModelCardProps {
   modelUrl: string;
   thumbnailUrl?: string | null;
   canEdit: boolean;
+  /** v3.3.0 — true si el modelo ya tiene .mview asociado. Cambia el estado del botón Showcase. */
+  hasShowcase?: boolean;
+  /** v3.3.0 — solo se pasa si el usuario es admin/teacher. Si está, se renderiza el botón Marmoset. */
+  canManageShowcase?: boolean;
   likeCount: number;
   commentCount: number;
   isLiked: boolean;
@@ -15,6 +19,7 @@ interface ModelCardProps {
   onClick: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onShowcase?: () => void;
 }
 
 const categoryColors: Record<string, string> = {
@@ -38,6 +43,8 @@ export default function ModelCard({
   tags,
   thumbnailUrl,
   canEdit,
+  hasShowcase = false,
+  canManageShowcase = false,
   likeCount,
   commentCount,
   isLiked,
@@ -45,6 +52,7 @@ export default function ModelCard({
   onClick,
   onEdit,
   onDelete,
+  onShowcase,
 }: ModelCardProps) {
   const [animating, setAnimating] = useState(false);
 
@@ -111,28 +119,56 @@ export default function ModelCard({
         </div>
       </div>
 
-      {canEdit && (
+      {(canEdit || canManageShowcase) && (
         <div className="card-admin-actions">
-          <button
-            className="admin-btn admin-edit"
-            onClick={(e) => { e.stopPropagation(); onEdit?.(); }}
-            title="Editar"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
-          </button>
-          <button
-            className="admin-btn admin-delete"
-            onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
-            title="Eliminar"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg>
-          </button>
+          {/* v3.3.0 — botón Showcase: agregar/quitar versión Marmoset.
+              Solo visible para admin/teacher. Estado visual cambia según hasShowcase. */}
+          {canManageShowcase && (
+            <button
+              className={`admin-btn admin-showcase ${hasShowcase ? 'has-showcase' : ''}`}
+              onClick={(e) => { e.stopPropagation(); onShowcase?.(); }}
+              title={hasShowcase ? 'Showcase Marmoset (gestionar)' : 'Agregar Showcase Marmoset'}
+            >
+              {/* Ícono "M" estilizada — referencia simple a Marmoset */}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 20 V6 L8 14 L13 6 V20" />
+                {hasShowcase ? (
+                  /* checkmark cuando ya tiene showcase */
+                  <polyline points="16 13 18 15 21 11" />
+                ) : (
+                  /* + cuando no tiene */
+                  <>
+                    <line x1="18.5" y1="9" x2="18.5" y2="15" />
+                    <line x1="15.5" y1="12" x2="21.5" y2="12" />
+                  </>
+                )}
+              </svg>
+            </button>
+          )}
+          {canEdit && (
+            <>
+              <button
+                className="admin-btn admin-edit"
+                onClick={(e) => { e.stopPropagation(); onEdit?.(); }}
+                title="Editar"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              </button>
+              <button
+                className="admin-btn admin-delete"
+                onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
+                title="Eliminar"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

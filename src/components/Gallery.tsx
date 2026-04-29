@@ -6,6 +6,7 @@ import {
   initAuth, onAuthStateChange, getMe,
   fetchModels, fetchLikeCounts, fetchCommentCounts, fetchUserLikes, toggleLike,
   updateModelOrder, deleteModel,
+  isAdmin as checkIsAdmin, isTeacher as checkIsTeacher,
   type ModelRow, type Profile,
 } from '../lib/api';
 import SortableModelCard from './SortableModelCard';
@@ -17,6 +18,8 @@ const ModelModal = lazy(() => import('./ModelModal'));
 const UploadForm = lazy(() => import('./UploadForm'));
 const EditModelForm = lazy(() => import('./EditModelForm'));
 const ThumbnailGenerator = lazy(() => import('./ThumbnailGenerator'));
+// v3.3.0 — Solo se carga cuando admin/teacher abre el form de Showcase
+const ShowcaseUploadForm = lazy(() => import('./ShowcaseUploadForm'));
 
 const categories = [
   { key: 'all', label: 'Todos' },
@@ -45,11 +48,15 @@ export default function Gallery() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [showThumbGen, setShowThumbGen] = useState(false);
   const [thumbRegenAll, setThumbRegenAll] = useState(false);
+  // v3.3.0 — modelo seleccionado para upload de Showcase (.mview). null = modal cerrado.
+  const [showcaseFor, setShowcaseFor] = useState<ModelRow | null>(null);
   const modalCounter = useRef(0);
   const loadVersionRef = useRef(0);
 
   const isLoggedIn = !!userId;
   const isAdmin = profile?.role === 'admin';
+  // v3.3.0 — admin O teacher pueden gestionar Showcase. Usa helpers de RBAC multi-rol.
+  const canManageShowcase = checkIsAdmin(profile) || checkIsTeacher(profile);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -292,6 +299,8 @@ export default function Gallery() {
                   modelUrl={model.file_url}
                   thumbnailUrl={model.thumbnail_url}
                   canEdit={canEdit(model)}
+                  hasShowcase={!!model.mview_url}
+                  canManageShowcase={canManageShowcase}
                   likeCount={likeCounts[model.id] || 0}
                   commentCount={commentCounts[model.id] || 0}
                   isLiked={userLikes.has(model.id)}
@@ -299,6 +308,7 @@ export default function Gallery() {
                   onClick={() => handleOpenModal(model)}
                   onEdit={() => setEditingModel(model)}
                   onDelete={() => setDeleteConfirm(model)}
+                  onShowcase={() => setShowcaseFor(model)}
                 />
               ))}
             </SortableContext>
@@ -313,6 +323,8 @@ export default function Gallery() {
                 modelUrl={model.file_url}
                 thumbnailUrl={model.thumbnail_url}
                 canEdit={canEdit(model)}
+                hasShowcase={!!model.mview_url}
+                canManageShowcase={canManageShowcase}
                 likeCount={likeCounts[model.id] || 0}
                 commentCount={commentCounts[model.id] || 0}
                 isLiked={userLikes.has(model.id)}
@@ -320,6 +332,7 @@ export default function Gallery() {
                 onClick={() => handleOpenModal(model)}
                 onEdit={() => setEditingModel(model)}
                 onDelete={() => setDeleteConfirm(model)}
+                onShowcase={() => setShowcaseFor(model)}
               />
             ))
           )}
@@ -363,6 +376,18 @@ export default function Gallery() {
           model={editingModel}
           onSave={() => { setEditingModel(null); loadModels(); }}
           onClose={() => setEditingModel(null)}
+        />
+      )}
+
+      {/* v3.3.0 — Form de Showcase Marmoset (admin/teacher) */}
+      {showcaseFor && (
+        <ShowcaseUploadForm
+          key={`showcase-${showcaseFor.id}`}
+          modelId={showcaseFor.id}
+          modelTitle={showcaseFor.title}
+          studentName={showcaseFor.student}
+          onSuccess={() => { setShowcaseFor(null); loadModels(); }}
+          onClose={() => setShowcaseFor(null)}
         />
       )}
 

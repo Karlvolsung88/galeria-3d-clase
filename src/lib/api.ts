@@ -279,6 +279,31 @@ export async function deleteModel(id: string): Promise<void> {
   await apiFetch<{ ok: boolean }>(`/models/${id}`, { method: 'DELETE' });
 }
 
+// =====================================================================
+// Showcase v3.3.0 — enriquece un modelo del estudiante con su versión
+// Marmoset Toolbag (.mview). Solo admin/teacher; el backend valida RBAC.
+// =====================================================================
+
+export async function uploadShowcase(
+  modelId: string,
+  mviewFile: File,
+  thumbnailFile?: File
+): Promise<ModelRow> {
+  const formData = new FormData();
+  formData.append('mview', mviewFile);
+  // Thumbnail es OPCIONAL — Marmoset Toolbag puede embebir un poster en el
+  // propio .mview, o el frontend cae al thumbnail del .glb del estudiante.
+  if (thumbnailFile) formData.append('thumbnail', thumbnailFile);
+  return apiFetch<ModelRow>(`/models/${modelId}/showcase`, {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+export async function removeShowcase(modelId: string): Promise<ModelRow> {
+  return apiFetch<ModelRow>(`/models/${modelId}/showcase`, { method: 'DELETE' });
+}
+
 export async function updateModelOrder(updates: { id: string; sort_order: number }[]): Promise<boolean> {
   try {
     await apiFetch<{ ok: boolean }>('/models/reorder', {

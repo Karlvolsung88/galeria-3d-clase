@@ -19,8 +19,16 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Técnico
 
-- **Sandbox local** — `public/test-models/` agregado a `.gitignore` para aislar archivos `.mview` de prototipado del bucket de prod. Subida real a Spaces queda diferida hasta Sprint 5.
+- **Sandbox local** — `public/test-models/` agregado a `.gitignore` para aislar archivos `.mview` de prototipado del bucket de prod. Subida real a Spaces queda diferida hasta Sprint 7.
 - **Ruta `/test-marmoset`** (PROTOTIPO LOCAL) — Página standalone que renderiza `MarmosetViewer` apuntando a `/test-models/Bourgelon.mview`. Marcada para eliminar antes del Sprint 7 (deploy).
+
+### Sprint 5 — Subida UI
+
+- **Botón "+ Showcase" en cada card** — Visible solo para admin/teacher (RBAC multi-rol vía `isAdmin`/`isTeacher` helpers). Estados visuales: cian si el modelo aún no tiene Showcase, verde si ya lo tiene. Ícono "M" estilizada de Marmoset.
+- **`ShowcaseUploadForm.tsx`** — Modal con dropzone para `.mview` y picker de imagen de portada **opcional** (Marmoset Toolbag puede embebir poster). Preview de la imagen seleccionada. Banner de modo prototipo visible mientras `PROTOTYPE_GUARD = true`.
+- **`uploadShowcase()` y `removeShowcase()`** en `lib/api.ts` — wrappers del endpoint `POST/DELETE /api/models/:id/showcase`. Thumbnail opcional en signature.
+- **PROTOTYPE_GUARD** — Flag que desactiva el upload real durante prototipado. Submit valida formularios y muestra alert con resumen, sin tocar el bucket de prod. Se desactiva en Sprint 7.
+- **Backend `POST /api/models/:id/showcase`** — Thumbnail opcional (era required); si no se envía, `mview_thumbnail_url` queda NULL y el frontend cae al thumbnail del .glb / placeholder.
 
 ## [3.2.1] — 2026-04-15
 
