@@ -43,15 +43,76 @@ Permitir que docentes (admin + teacher) curen una **biblioteca de assets 3D de c
 
 ## Sprints (Scrumban WIP:1) — REPLAN POST DECISIONES
 
-| # | Sprint | Estado |
-|---|---|---|
-| 1 | Foundation (marmoset.js + multer fileFilter + RBAC handler) | ✅ hecho |
-| 2 | MarmosetViewer component + ruta `/test-marmoset` (QA visual) | ✅ hecho — Carlos confirmó |
-| 3 | Migración 004 + endpoint enrichment `POST /api/models/:id/showcase` | en progreso |
-| 4 | ModelModal con carrusel animado .glb ↔ .mview (Isabella) | pendiente |
-| 5 | Botón "+ Showcase" en card de galería (admin/teacher) + form upload | pendiente |
-| 6 | Badge ⭐ en cards con Showcase + filtro opcional | pendiente |
-| 7 | Cleanup TestMarmoset + QA + deploy v3.3.0 | pendiente |
+| # | Sprint | Estado | Commit |
+|---|---|---|---|
+| 1 | Foundation (marmoset.js + multer fileFilter + RBAC handler) | ✅ hecho | d5b39ee |
+| 2 | MarmosetViewer component + ruta `/test-marmoset` (QA visual) | ✅ hecho | d5b39ee |
+| 3 | Migración 004 + endpoint enrichment `POST /api/models/:id/showcase` | ✅ hecho | d5b39ee |
+| 4 | ModelModal con carrusel flip .glb ↔ .mview | ✅ hecho — caso real AK47 Andrea Rozo | d5b39ee |
+| 5 | Botón "+ Showcase" en card + form upload (con PROTOTYPE_GUARD) | ✅ hecho — Carlos confirmó | 33fd766 |
+| 6 | Badge ⭐ en cards con Showcase + filtro opcional | ⏸ pendiente — siguiente sesión | — |
+| 7 | Cleanup TestMarmoset + activar guard + QA + deploy v3.3.0 | ⏸ pendiente | — |
+
+---
+
+## ✋ Estado al cerrar sesión 2026-04-29 (noche)
+
+**Lo que funciona en local:**
+- Backend `localhost:3000` con multer + endpoints showcase + RBAC admin/teacher
+- Frontend `localhost:5173` con carrusel flip 3D + form upload + botón en cards
+- Sandbox `public/test-models/`: `Bourgelon.mview` (1.95 MB) + `AK47_Andrea.mview` (6.9 MB)
+- DB local `galeria_3d_local`: AK47 de Andrea Rozo (id `62001d05-5609-4f69-bb81-c32780ad60b0`) tiene `mview_url='/test-models/AK47_Andrea.mview'`
+
+**Restricciones de prototipo aún activas (intencionales):**
+- `PROTOTYPE_GUARD = true` en `ShowcaseUploadForm.tsx` — submit valida pero NO sube al bucket
+- `vite.config.ts` debe revertirse a localhost cada sesión (sin commit nunca)
+- `/test-marmoset` ruta de debug en App.tsx — eliminar antes de deploy
+
+**Pendientes técnicos abiertos:**
+- Animación del flip se siente "horrible" según Carlos pero queda funcional. Pulido cinematográfico fue intentado y rompió `preserve-3d`. Pendiente: explorar enfoque alternativo (cross-fade con depth, slide, etc.) en sesión futura — fuera del alcance actual.
+- Modelos `.mview` con cámara descentrada en exportación — documentar guideline al docente (Sprint 7 incluirá runbook básico).
+
+## 📋 Sprint 6 — siguiente sesión (mañana)
+
+**Objetivo:** que el visitante identifique de un vistazo qué modelos tienen versión Showcase, opcionalmente con filtro.
+
+Tareas:
+- [ ] **Badge** en `ModelCard` cuando `hasShowcase=true`. Posición: esquina superior izquierda del thumbnail. Estilo: chip cian translúcido con ícono "M" + texto "Showcase". Animación sutil de aparición (pulse del glow).
+- [ ] **CSS** `.card-showcase-badge` + animación.
+- [ ] **Filtro toggle** "Solo Showcase" — decidir con Carlos: ¿categoría adicional junto a Todos/Personaje/etc., o switch independiente?
+- [ ] Si filtro: extender state `activeFilter` o agregar `showcaseOnly: boolean` en Gallery.
+
+**Archivos a tocar:**
+- `src/components/ModelCard.tsx` (badge JSX)
+- `src/styles/global.css` (estilos badge)
+- `src/components/Gallery.tsx` (filtro, si va)
+
+## 🚀 Sprint 7 — deploy v3.3.0
+
+Tareas (no antes de aprobar Sprint 6):
+- [ ] Eliminar `src/pages/TestMarmoset.tsx` y la ruta `/test-marmoset` de `App.tsx`
+- [ ] `PROTOTYPE_GUARD = false` en `ShowcaseUploadForm.tsx`
+- [ ] Bump `package.json` 3.2.1 → 3.3.0
+- [ ] `[Unreleased]` → `[3.3.0] — fecha` en CHANGELOG
+- [ ] `npm run build` clean
+- [ ] **Backups prod** (DB + server.js + frontend)
+- [ ] **Migración 004** en prod (como `postgres`, single-transaction)
+- [ ] **scp** `backend/server.js` + `pm2 restart galeria-api`
+- [ ] **scp** `dist/*` + `public/marmoset.js`
+- [ ] Restaurar `vite.config.ts` a prod ANTES del commit final
+- [ ] Push develop → merge main → tag `v3.3.0` → push tags
+- [ ] Vuelta a develop + sync (regla 2.6)
+- [ ] QA prod: Carlos sube .mview real desde admin a un modelo de prueba
+- [ ] Session log
+
+## 🔁 Comando para retomar mañana
+
+1. `git status` → debe estar limpio en `develop` (commit `33fd766` o más reciente)
+2. Editar `vite.config.ts`: `API_TARGET='http://localhost:3000'`, `API_SECURE=false` (NO commit)
+3. Terminal 1: `cd backend && node server.js`
+4. Terminal 2: `npm run dev`
+5. Verificar http://localhost:5173 + click "ak47" de Andrea → debe ver carrusel funcional
+6. Arrancar Sprint 6 siguiendo el plan de arriba
 
 ---
 
