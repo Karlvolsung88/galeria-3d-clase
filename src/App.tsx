@@ -6,6 +6,7 @@ import ProfilePage from './components/ProfilePage';
 import AdminPanel from './components/AdminPanel';
 import TeacherPanel from './components/TeacherPanel';
 import ResetPasswordPage from './components/ResetPasswordPage';
+import TestMarmoset from './pages/TestMarmoset'; // PROTOTIPO LOCAL — eliminar antes de Sprint 5
 
 export default function App() {
   return (
@@ -17,6 +18,8 @@ export default function App() {
         <Route path="/admin" element={<AdminPanel />} />
         <Route path="/teacher" element={<TeacherPanel />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        {/* PROTOTIPO LOCAL — eliminar antes de Sprint 5 (deploy) */}
+        <Route path="/test-marmoset" element={<TestMarmoset />} />
       </Route>
     </Routes>
   );

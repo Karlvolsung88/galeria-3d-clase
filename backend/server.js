@@ -35,7 +35,31 @@ const s3 = new S3Client({
   forcePathStyle: false,
 });
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+// File filter — formatos aceptados según el campo del FormData.
+//   field "file":      modelos 3D del flujo principal (.glb, .gltf, .mview)
+//   field "mview":     archivo .mview del flujo Showcase (enrichment v3.3.0)
+//   field "thumbnail": imágenes (cualquier image/*)
+// Tamaño máximo: 100 MB (cubre .mview con texturas embedded HD).
+const ALLOWED_MODEL_EXT = /\.(glb|gltf|mview)$/i;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.fieldname === "file") {
+      if (ALLOWED_MODEL_EXT.test(file.originalname)) return cb(null, true);
+      return cb(new Error("Formato no soportado. Usa .glb, .gltf o .mview"));
+    }
+    if (file.fieldname === "mview") {
+      if (/\.mview$/i.test(file.originalname)) return cb(null, true);
+      return cb(new Error("El archivo Showcase debe ser .mview"));
+    }
+    if (file.fieldname === "thumbnail") {
+      if (file.mimetype.startsWith("image/")) return cb(null, true);
+      return cb(new Error("La portada debe ser una imagen"));
+    }
+    return cb(new Error(`Campo desconocido: ${file.fieldname}`));
+  },
+});
 
 // ============================================================
 // --- RBAC Helpers ---
@@ -452,6 +476,13 @@ app.post("/api/models", auth, upload.fields([{ name: "file", maxCount: 1 }, { na
     const file = req.files?.file?.[0];
     if (!file) return res.status(400).json({ error: "Archivo requerido" });
 
+    // RBAC para .mview: solo docentes (admin / teacher) pueden subir Showcase.
+    // Los .glb/.gltf siguen abiertos a cualquier usuario autenticado (estudiantes incluidos).
+    const isMview = /\.mview$/i.test(file.originalname);
+    if (isMview && !hasAnyRole(req, "admin", "teacher")) {
+      return res.status(403).json({ error: "Solo docentes pueden subir modelos .mview (Showcase)" });
+    }
+
     const timestamp = Date.now();
     const fileKey = `models/${timestamp}-${file.originalname}`;
 
@@ -459,7 +490,8 @@ app.post("/api/models", auth, upload.fields([{ name: "file", maxCount: 1 }, { na
       Bucket: process.env.SPACES_BUCKET,
       Key: fileKey,
       Body: file.buffer,
-      ContentType: file.mimetype,
+      // .mview no tiene mimetype estándar — usar octet-stream binario.
+      ContentType: isMview ? "application/octet-stream" : file.mimetype,
       ACL: "public-read",
     }));
 
@@ -468,12 +500,15 @@ app.post("/api/models", auth, upload.fields([{ name: "file", maxCount: 1 }, { na
 
     const thumb = req.files?.thumbnail?.[0];
     if (thumb) {
-      const thumbKey = `thumbnails/${timestamp}-thumb.webp`;
+      // Para .glb el thumb se genera client-side como WebP (ThumbnailCapture).
+      // Para .mview el docente sube imagen manual (PNG/JPG) — preservar extensión.
+      const thumbExt = isMview ? (thumb.originalname.match(/\.(png|jpg|jpeg|webp)$/i)?.[0] || ".png") : ".webp";
+      const thumbKey = `thumbnails/${timestamp}-thumb${thumbExt}`;
       await s3.send(new PutObjectCommand({
         Bucket: process.env.SPACES_BUCKET,
         Key: thumbKey,
         Body: thumb.buffer,
-        ContentType: "image/webp",
+        ContentType: isMview ? thumb.mimetype : "image/webp",
         ACL: "public-read",
       }));
       thumbnail_url = `/cdn/${thumbKey}`;
@@ -488,7 +523,108 @@ app.post("/api/models", auth, upload.fields([{ name: "file", maxCount: 1 }, { na
     res.json(rows[0]);
   } catch (err) {
     console.error("Upload error:", err);
-    res.status(500).json({ error: "Error al subir modelo" });
+    // Errores del fileFilter de multer llegan acá con err.message útil
+    const msg = err?.message?.startsWith("Formato") || err?.message?.startsWith("La portada")
+      ? err.message
+      : "Error al subir modelo";
+    res.status(500).json({ error: msg });
+  }
+});
+
+// ============================================================
+// --- SHOWCASE (.mview) — feature v3.3.0 ---
+// ============================================================
+// Enriquece un modelo existente con su versión Marmoset Toolbag (.mview).
+// Solo docentes (admin/teacher) pueden agregar Showcase.
+// El frontend mostrará un carrusel para alternar entre .glb (estudiante) y .mview.
+// IMPORTANTE: declarar ANTES de PUT /api/models/:id para que Express enrute correctamente.
+app.post(
+  "/api/models/:id/showcase",
+  auth,
+  requireRole("admin", "teacher"),
+  upload.fields([
+    { name: "mview", maxCount: 1 },
+    { name: "thumbnail", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const mview = req.files?.mview?.[0];
+      const thumbnail = req.files?.thumbnail?.[0];
+
+      if (!mview) return res.status(400).json({ error: "Archivo .mview requerido" });
+      if (!thumbnail) return res.status(400).json({ error: "Imagen de portada requerida" });
+
+      // Verificar que el modelo existe (FK implícita)
+      const { rows: existing } = await pool.query("SELECT id, title FROM models WHERE id = $1", [id]);
+      if (existing.length === 0) return res.status(404).json({ error: "Modelo no encontrado" });
+
+      const timestamp = Date.now();
+      const mviewKey = `models/${timestamp}-${mview.originalname}`;
+      const thumbExt = thumbnail.originalname.match(/\.(png|jpg|jpeg|webp)$/i)?.[0] || ".png";
+      const thumbKey = `thumbnails/${timestamp}-showcase${thumbExt}`;
+
+      // Subir ambos en paralelo (independientes)
+      await Promise.all([
+        s3.send(new PutObjectCommand({
+          Bucket: process.env.SPACES_BUCKET,
+          Key: mviewKey,
+          Body: mview.buffer,
+          ContentType: "application/octet-stream",
+          ACL: "public-read",
+        })),
+        s3.send(new PutObjectCommand({
+          Bucket: process.env.SPACES_BUCKET,
+          Key: thumbKey,
+          Body: thumbnail.buffer,
+          ContentType: thumbnail.mimetype,
+          ACL: "public-read",
+        })),
+      ]);
+
+      const mview_url = `/cdn/${mviewKey}`;
+      const mview_thumbnail_url = `/cdn/${thumbKey}`;
+
+      const { rows } = await pool.query(
+        `UPDATE models
+            SET mview_url = $1, mview_thumbnail_url = $2
+          WHERE id = $3
+        RETURNING *`,
+        [mview_url, mview_thumbnail_url, id]
+      );
+
+      res.json(rows[0]);
+    } catch (err) {
+      console.error("Showcase upload error:", err);
+      const msg =
+        err?.message?.startsWith("El archivo Showcase") ||
+        err?.message?.startsWith("La portada")
+          ? err.message
+          : "Error al subir Showcase";
+      res.status(500).json({ error: msg });
+    }
+  }
+);
+
+// Quitar el Showcase (no borra el .glb del estudiante, solo limpia las columnas mview_*).
+// Útil si el docente quiere reemplazar la versión Marmoset con otra subiendo de nuevo.
+// Nota: NO borramos el archivo .mview del bucket (estrategia "soft delete" — es trivial
+// limpiar archivos huérfanos con un script administrativo si se vuelve necesario).
+app.delete("/api/models/:id/showcase", auth, requireRole("admin", "teacher"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await pool.query(
+      `UPDATE models
+          SET mview_url = NULL, mview_thumbnail_url = NULL
+        WHERE id = $1
+      RETURNING *`,
+      [id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "Modelo no encontrado" });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("Showcase delete error:", err);
+    res.status(500).json({ error: "Error al quitar Showcase" });
   }
 });
 

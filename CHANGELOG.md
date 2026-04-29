@@ -7,6 +7,21 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Agregado (en progreso — feature v3.3.0 Marmoset Showcase)
+
+- **Migración 004** — Columnas `mview_url` y `mview_thumbnail_url` (nullable) en tabla `models`. Permite que un modelo del estudiante tenga una versión Showcase opcional en formato Marmoset Toolbag (.mview), curada por un docente. Bloque DO valida que los modelos existentes arranquen sin Showcase.
+- **Backend — endpoints Showcase** — Nuevo `POST /api/models/:id/showcase` (auth + RBAC admin/teacher) que sube el .mview a DO Spaces, sube poster .png/.jpg manual, y actualiza la fila del modelo. Nuevo `DELETE /api/models/:id/showcase` que limpia las columnas (soft delete del Showcase, no borra el .glb del estudiante). Multer ahora acepta campo `mview` adicional al `file`/`thumbnail` existentes.
+- **Backend — multer fileFilter + RBAC** — Validación de extensión (.glb/.gltf/.mview) en multer, y gate `requireRole(admin/teacher)` cuando se sube .mview en POST /api/models. Estudiantes solo pueden subir .glb/.gltf como antes.
+- **Frontend — `MarmosetViewer.tsx`** — Componente que monta el visor oficial de Marmoset Toolbag (script `public/marmoset.js` v4.05) en un iframe aislado. Soporta modo fluido (sin width/height → `fullFrame: true` para containers responsive como modales) y modo fijo (con width/height para previews preestablecidos).
+- **Frontend — `ShowcaseCarousel.tsx`** — Carrusel flip-card 3D que alterna entre la vista Marmoset (frontal, default) y la vista GLB del estudiante (trasera) con animación CSS `rotateY` 600ms. Toggle inferior con dos chips polaroid sincronizados.
+- **Frontend — `ModelModal` con switch** — Si el modelo tiene `mview_url`, monta el carrusel; si no, comportamiento original con Canvas único. Lazy-loaded para no inflar el bundle de modelos sin Showcase. Placeholder de carga usa `mview_thumbnail_url` cuando hay Showcase.
+- **Plan de implementación** — `docs/plans/2026-04-29-marmoset-viewer.md` con sprints, equipo (Sebastián, Isabella, Diego, Andrés, Mateo), decisiones tomadas con Carlos y restricciones de prototipado local.
+
+### Técnico
+
+- **Sandbox local** — `public/test-models/` agregado a `.gitignore` para aislar archivos `.mview` de prototipado del bucket de prod. Subida real a Spaces queda diferida hasta Sprint 5.
+- **Ruta `/test-marmoset`** (PROTOTIPO LOCAL) — Página standalone que renderiza `MarmosetViewer` apuntando a `/test-models/Bourgelon.mview`. Marcada para eliminar antes del Sprint 7 (deploy).
+
 ## [3.2.1] — 2026-04-15
 
 Patch UX que elimina fricción en el formulario de subida de modelos.

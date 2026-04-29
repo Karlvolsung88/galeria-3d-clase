@@ -91,6 +91,11 @@ export interface ModelRow {
   updated_at: string;
   sort_order?: number;
   thumbnail_url?: string | null;
+  // Showcase v3.3.0 — versión Marmoset Toolbag opcional. Si hay mview_url,
+  // el modelo tiene una vista alternativa (PBR avanzado) y el modal muestra
+  // un carrusel para alternar entre .glb (estudiante) y .mview (docente).
+  mview_url?: string | null;
+  mview_thumbnail_url?: string | null;
 }
 
 export interface CommentRow {

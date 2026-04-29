@@ -338,6 +338,8 @@ export default function Gallery() {
           tags={selectedModel.tags}
           modelUrl={selectedModel.file_url}
           thumbnailUrl={selectedModel.thumbnail_url}
+          mviewUrl={selectedModel.mview_url}
+          mviewThumbnailUrl={selectedModel.mview_thumbnail_url}
           userId={userId}
           isAdmin={isAdmin}
           likeCount={likeCounts[selectedModel.id] || 0}

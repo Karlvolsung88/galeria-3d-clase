@@ -3,6 +3,9 @@ import { fetchComments, addComment, deleteComment, type CommentRow } from '../li
 
 const LazyCanvas = lazy(() => import('@react-three/fiber').then(m => ({ default: m.Canvas })));
 const ModelScene = lazy(() => import('./ModelScene'));
+// Carrusel solo se carga cuando el modelo TIENE Showcase (.mview) — evita
+// inflar el bundle de modelos que solo tienen .glb.
+const ShowcaseCarousel = lazy(() => import('./ShowcaseCarousel'));
 
 interface ModelModalProps {
   modelId: string;
@@ -13,6 +16,10 @@ interface ModelModalProps {
   tags: string[];
   modelUrl: string;
   thumbnailUrl?: string | null;
+  /** URL de la versión Showcase (.mview) si el modelo la tiene. v3.3.0 */
+  mviewUrl?: string | null;
+  /** Poster manual del Showcase subido por el docente. v3.3.0 */
+  mviewThumbnailUrl?: string | null;
   userId: string | null;
   isAdmin: boolean;
   likeCount: number;
@@ -50,8 +57,10 @@ function timeAgo(dateStr: string): string {
 
 export default function ModelModal({
   modelId, title, student, category, description, tags, modelUrl, thumbnailUrl,
+  mviewUrl, mviewThumbnailUrl,
   userId, isAdmin, likeCount, isLiked, onLike, onRequestAuth, onClose,
 }: ModelModalProps) {
+  const hasShowcase = !!mviewUrl;
   const [comments, setComments] = useState<CommentRow[]>([]);
   const [newComment, setNewComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -114,39 +123,59 @@ export default function ModelModal({
         <div className="modal-viewer-wrap">
           <button className="modal-close" onClick={onClose} aria-label="Cerrar modal">✕</button>
 
-          {/* Thumbnail placeholder (estilo Sketchfab) */}
-          {thumbnailUrl && (
+          {/* Thumbnail placeholder (estilo Sketchfab).
+              En modo Showcase mostramos el poster del .mview en lugar del .glb,
+              ya que el viewer principal por default es Marmoset (cara frontal). */}
+          {(thumbnailUrl || mviewThumbnailUrl) && (
             <div className={`modal-thumb-placeholder ${modelLoaded ? 'hidden' : ''}`}>
-              <img src={thumbnailUrl} alt={title} />
+              <img src={hasShowcase && mviewThumbnailUrl ? mviewThumbnailUrl : thumbnailUrl!} alt={title} />
               <div className="modal-loading-spinner">
                 <div className="spinner" />
-                <span>Cargando modelo 3D...</span>
+                <span>{hasShowcase ? 'Cargando Showcase...' : 'Cargando modelo 3D...'}</span>
               </div>
             </div>
           )}
 
-          {/* Canvas 3D con fade-in */}
-          <div className={`modal-canvas-wrap ${modelLoaded ? 'loaded' : ''}`}>
-            <Suspense fallback={null}>
-              <LazyCanvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true }}>
-                <ModelScene
-                  url={modelUrl}
-                  autoRotate={false}
-                  enableZoom={true}
-                  enablePan={true}
-                  enableRotate={true}
-                  showFloor={true}
-                  onLoaded={() => setModelLoaded(true)}
+          {hasShowcase ? (
+            /* v3.3.0 — Modelo tiene Showcase: carrusel flip 3D entre Marmoset y GLB */
+            <div className={`modal-canvas-wrap ${modelLoaded ? 'loaded' : ''}`}>
+              <Suspense fallback={null}>
+                <ShowcaseCarousel
+                  glbUrl={modelUrl}
+                  mviewUrl={mviewUrl!}
+                  glbThumbnail={thumbnailUrl}
+                  mviewThumbnail={mviewThumbnailUrl}
+                  onGlbLoaded={() => setModelLoaded(true)}
                 />
-              </LazyCanvas>
-            </Suspense>
-          </div>
+              </Suspense>
+            </div>
+          ) : (
+            /* Flujo original: solo .glb del estudiante */
+            <div className={`modal-canvas-wrap ${modelLoaded ? 'loaded' : ''}`}>
+              <Suspense fallback={null}>
+                <LazyCanvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true }}>
+                  <ModelScene
+                    url={modelUrl}
+                    autoRotate={false}
+                    enableZoom={true}
+                    enablePan={true}
+                    enableRotate={true}
+                    showFloor={true}
+                    onLoaded={() => setModelLoaded(true)}
+                  />
+                </LazyCanvas>
+              </Suspense>
+            </div>
+          )}
 
-          <div className="controls-hint">
-            <span>LMB: Orbitar</span>
-            <span>RMB: Paneo</span>
-            <span>Scroll: Zoom</span>
-          </div>
+          {/* Hints solo aplican al canvas .glb — el viewer Marmoset trae sus propios controles */}
+          {!hasShowcase && (
+            <div className="controls-hint">
+              <span>LMB: Orbitar</span>
+              <span>RMB: Paneo</span>
+              <span>Scroll: Zoom</span>
+            </div>
+          )}
         </div>
 
         <div className="modal-panel">
