@@ -16,7 +16,10 @@ import { uploadShowcase } from '../lib/api';
  * Para activar uploads reales: cambiar PROTOTYPE_GUARD a false. Esto se hará
  * en Sprint 7 (deploy) una vez todo el flujo esté validado.
  */
-const PROTOTYPE_GUARD = true;
+// Sprint 7 desactivará este guard en producción. En dev local ahora se
+// queda en false porque el backend usa filesystem (backend/uploads/) y
+// nunca toca el bucket de Spaces de prod. Seguro subir .mview reales aquí.
+const PROTOTYPE_GUARD = false;
 
 interface ShowcaseUploadFormProps {
   modelId: string;
@@ -86,7 +89,7 @@ export default function ShowcaseUploadForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mviewFile || !thumbFile) return;
+    if (!mviewFile) return;
 
     if (PROTOTYPE_GUARD) {
       // Modo prototipo: NO subimos al backend. Solo log para QA visual.

@@ -1110,6 +1110,105 @@ footer p {
   border-color: var(--accent2);
 }
 
+/* v3.3.0 — Toolbar admin/teacher dentro del modal del modelo.
+   Posicionada top-left del area visual (lado izquierdo del modal).
+   Permite reemplazar el .glb y gestionar (agregar/reemplazar/quitar) el .mview.
+   Visible solo si canManageFiles=true (admin OR teacher). */
+.modal-admin-toolbar {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: rgba(8, 10, 14, 0.78);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.admin-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+}
+
+.admin-toolbar-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  text-transform: uppercase;
+  padding: 0 4px;
+}
+
+.admin-toolbar-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 24, 32, 0.7);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+.admin-toolbar-btn:hover:not(:disabled) {
+  background: rgba(0, 229, 255, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.admin-toolbar-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.admin-toolbar-btn--danger:hover:not(:disabled) {
+  background: rgba(255, 77, 0, 0.18);
+  border-color: var(--accent2);
+  color: var(--accent2);
+}
+
+.admin-toolbar-error {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--accent2);
+  padding: 0 6px;
+  max-width: 220px;
+}
+
+/* v3.3.0 — Tag "Marmoset Viewer" en card-tags.
+   Aparece junto a GLB/BLENDER/etc. SOLO cuando el modelo tiene un .mview
+   adjunto (visible en el carrusel del modal). Cian iluminado lo diferencia
+   visualmente de los tags neutros sin invadir el thumbnail.
+   Pulse sutil del glow para llamar la atención sin ser molesto. */
+.tag-marmoset {
+  border-color: rgba(0, 229, 255, 0.6) !important;
+  background: rgba(0, 229, 255, 0.10);
+  color: var(--accent) !important;
+  box-shadow: 0 0 0 transparent;
+  animation: tag-marmoset-glow 3.2s ease-in-out infinite;
+}
+@keyframes tag-marmoset-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 transparent;
+    border-color: rgba(0, 229, 255, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(0, 229, 255, 0.45);
+    border-color: rgba(0, 229, 255, 0.95);
+  }
+}
+
 /* v3.3.0 — Botón Showcase Marmoset (admin/teacher).
    Estados:
      normal       → fondo gris, accent cian al hover (tono "agregar")

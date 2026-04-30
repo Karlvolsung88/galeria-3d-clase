@@ -33,3 +33,7 @@ backups/
 # Nunca commitear: los archivos definitivos van al bucket vía /admin upload
 public/test-models/
 
+# Storage local DEV (filesystem-based, v3.3.0) — NO se commitea
+# En prod el storage es DigitalOcean Spaces, no este directorio.
+backend/uploads/
+

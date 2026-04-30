@@ -95,6 +95,14 @@ export default function ModelCard({
         <div className="card-title">{title}</div>
         <div className="card-student">Estudiante: {student}</div>
         <div className="card-tags">
+          {/* v3.3.0 — Tag distintivo cuando el modelo tiene versión Marmoset (.mview).
+              Aparece primero (más prominente) con cian iluminado para diferenciarse
+              de los tags normales (GLB, BLENDER, etc.) sin invadir el thumbnail. */}
+          {hasShowcase && (
+            <span className="tag tag-marmoset" title="Este modelo tiene una versión Marmoset Viewer (Showcase)">
+              Marmoset Viewer
+            </span>
+          )}
           {tags.map((tag) => (
             <span key={tag} className="tag">{tag}</span>
           ))}

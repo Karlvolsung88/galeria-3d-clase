@@ -279,6 +279,20 @@ export async function deleteModel(id: string): Promise<void> {
   await apiFetch<{ ok: boolean }>(`/models/${id}`, { method: 'DELETE' });
 }
 
+/**
+ * Reemplaza el archivo .glb/.gltf/.mview de un modelo existente.
+ * Solo admin/teacher (RBAC en backend). El modelo conserva id, metadata,
+ * likes, comentarios y Showcase si lo tiene — solo cambia el binario.
+ */
+export async function replaceModelFile(modelId: string, file: File): Promise<ModelRow> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiFetch<ModelRow>(`/models/${modelId}/file`, {
+    method: 'PUT',
+    body: formData,
+  });
+}
+
 // =====================================================================
 // Showcase v3.3.0 — enriquece un modelo del estudiante con su versión
 // Marmoset Toolbag (.mview). Solo admin/teacher; el backend valida RBAC.

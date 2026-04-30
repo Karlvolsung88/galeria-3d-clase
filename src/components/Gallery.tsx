@@ -355,11 +355,13 @@ export default function Gallery() {
           mviewThumbnailUrl={selectedModel.mview_thumbnail_url}
           userId={userId}
           isAdmin={isAdmin}
+          canManageFiles={canManageShowcase}
           likeCount={likeCounts[selectedModel.id] || 0}
           isLiked={userLikes.has(selectedModel.id)}
           onLike={() => handleToggleLike(selectedModel.id)}
           onRequestAuth={() => setShowAuth(true)}
           onClose={() => setSelectedModel(null)}
+          onModelChanged={() => loadModels()}
         />
       )}
 

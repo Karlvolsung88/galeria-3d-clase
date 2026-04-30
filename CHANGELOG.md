@@ -22,6 +22,24 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 - **Sandbox local** — `public/test-models/` agregado a `.gitignore` para aislar archivos `.mview` de prototipado del bucket de prod. Subida real a Spaces queda diferida hasta Sprint 7.
 - **Ruta `/test-marmoset`** (PROTOTIPO LOCAL) — Página standalone que renderiza `MarmosetViewer` apuntando a `/test-models/Bourgelon.mview`. Marcada para eliminar antes del Sprint 7 (deploy).
 
+### Sprint 6 — Identificación visual + Storage local
+
+- **Tag "Marmoset Viewer"** — Reemplaza el badge sobre thumbnail (que entraba en conflicto con los botones admin) por un tag dentro de `card-tags` con cian iluminado y pulse sutil. Aparece solo cuando el modelo tiene `mview_url` (misma fuente de verdad que activa el carrusel). Visualmente coherente con tags existentes (GLB, BLENDER, PBR, etc.). Texto literal "Marmoset Viewer" como uso descriptivo del formato (no usa logo trademark — investigado con Marmoset legal/EULA).
+- **Storage abstraction NODE_ENV-based** — Helper `putAsset(key, body, ct)` en backend que decide el destino: en producción sube al bucket DigitalOcean Spaces (S3-compatible), en desarrollo local guarda en `backend/uploads/`. Mismo formato de `file_url` (`/cdn/...`) en ambos entornos.
+- **Middleware `/cdn` con fallback** — En dev, sirve archivos desde filesystem si existen, y si no caen a proxy contra `https://ceopacademia.org/cdn/*`. Permite ver los `.glb` ya subidos en producción sin necesidad de replicar el bucket localmente.
+- **`backend/uploads/` en .gitignore** — Garantiza que el storage local nunca se commitea.
+- **Auto-extracción de thumbnail del `.mview`** — Marmoset Toolbag al exportar viewer embebe automáticamente un poster JPG como primer asset. Función `extractMviewThumbnail()` busca magic numbers JPEG (FF D8 FF / FF D9) en los primeros 256 bytes del archivo y lo extrae como `image/jpeg`. Cero dependencias, 6 líneas. Ahora el docente puede subir solo el `.mview` y el sistema saca el poster solo. Si el docente sube imagen manual, esa hace override.
+- **Sync prod → local de profiles + models + user_roles** — `pg_dump --data-only` desde prod (read-only sobre prod), aplicación a `galeria_3d_local`. Estrategia: passwords locales se preservan (Carlos admin + QA), nuevos profiles de prod reciben placeholder bcrypt no-funcional para que nadie pueda login con ellos en local. `vite.config.ts` proxies correctamente diferenciados (`/api` y `/cdn` ambos a localhost en dev).
+
+### Sprint 7 — Toolbar admin en modal del modelo
+
+- **Reemplazar `.glb`** desde el modal — endpoint `PUT /api/models/:id/file` (admin/teacher). Mantiene `id`, likes, comentarios y Showcase. Solo cambia `file_url`/`file_name`/`file_size`. UI: botón `↻` en grupo `.GLB` de la toolbar.
+- **Reemplazar `.mview`** desde el modal — botón `↻` (o `+` si aún no hay) en grupo `.MVIEW` reusa `POST /api/models/:id/showcase` con auto-extract de thumbnail.
+- **Quitar `.mview`** desde el modal — botón `✕` en grupo `.MVIEW`, confirm dialog, llama `DELETE /api/models/:id/showcase`. Soft delete: limpia las columnas `mview_url`/`mview_thumbnail_url` sin tocar el `.glb` del estudiante.
+- **Borrar el `.glb` solo NO está soportado intencionalmente** (decisión: requeriría migración para hacer `file_url` nullable + casos edge en frontend para modelos sin `.glb`. El botón rojo de "eliminar modelo completo" en la card de la galería cubre el caso real).
+- **Carousel: orden + default ajustados** — Chips reordenados: `XR Ready · glTF · PBR` primero (default activo), `Showcase · Marmoset · PBR` después. La cara default del flip 3D ahora es la del estudiante; el Showcase se elige conscientemente.
+- **`PROTOTYPE_GUARD = false`** — El guard del form ya no es necesario porque el filesystem local aísla del bucket prod.
+
 ### Sprint 5 — Subida UI
 
 - **Botón "+ Showcase" en cada card** — Visible solo para admin/teacher (RBAC multi-rol vía `isAdmin`/`isTeacher` helpers). Estados visuales: cian si el modelo aún no tiene Showcase, verde si ya lo tiene. Ícono "M" estilizada de Marmoset.

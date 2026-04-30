@@ -36,8 +36,10 @@ export default function ShowcaseCarousel({
   mviewThumbnail,
   onGlbLoaded,
 }: ShowcaseCarouselProps) {
-  // Default: Marmoset al frente (decisión de Carlos en el plan v3.3.0).
-  const [activeView, setActiveView] = useState<'mview' | 'glb'>('mview');
+  // Default: GLB del estudiante al frente. El visitante ve primero la pieza
+  // exportada por el alumno (XR Ready · glTF · PBR) — el Showcase Marmoset
+  // es la "versión premium" que se elige conscientemente con el chip lateral.
+  const [activeView, setActiveView] = useState<'mview' | 'glb'>('glb');
   const flipped = activeView === 'glb';
 
   return (
@@ -72,8 +74,30 @@ export default function ShowcaseCarousel({
         </div>
       </div>
 
-      {/* Toggle inferior — dos chips polaroid */}
+      {/* Toggle inferior — dos chips polaroid.
+          Orden: XR Ready (default activo) primero, Showcase después. */}
       <div className="showcase-toggle" role="tablist" aria-label="Cambiar vista del modelo">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={flipped}
+          className={`showcase-chip ${flipped ? 'active' : ''}`}
+          onClick={() => setActiveView('glb')}
+        >
+          {glbThumbnail ? (
+            <img src={glbThumbnail} alt="Modelo del estudiante" className="showcase-chip-thumb" />
+          ) : (
+            <div className="showcase-chip-thumb showcase-chip-thumb--placeholder">
+              <span>G</span>
+            </div>
+          )}
+          <div className="showcase-chip-meta">
+            <span className="showcase-chip-label">XR Ready</span>
+            <span className="showcase-chip-sub">glTF · PBR</span>
+          </div>
+          {flipped && <span className="showcase-chip-dot" aria-hidden="true" />}
+        </button>
+
         <button
           type="button"
           role="tab"
@@ -93,27 +117,6 @@ export default function ShowcaseCarousel({
             <span className="showcase-chip-sub">Marmoset · PBR</span>
           </div>
           {!flipped && <span className="showcase-chip-dot" aria-hidden="true" />}
-        </button>
-
-        <button
-          type="button"
-          role="tab"
-          aria-selected={flipped}
-          className={`showcase-chip ${flipped ? 'active' : ''}`}
-          onClick={() => setActiveView('glb')}
-        >
-          {glbThumbnail ? (
-            <img src={glbThumbnail} alt="Modelo del estudiante" className="showcase-chip-thumb" />
-          ) : (
-            <div className="showcase-chip-thumb showcase-chip-thumb--placeholder">
-              <span>G</span>
-            </div>
-          )}
-          <div className="showcase-chip-meta">
-            <span className="showcase-chip-label">Modelo</span>
-            <span className="showcase-chip-sub">GLB · Estudiante</span>
-          </div>
-          {flipped && <span className="showcase-chip-dot" aria-hidden="true" />}
         </button>
       </div>
     </div>
