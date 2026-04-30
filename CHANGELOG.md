@@ -7,6 +7,51 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [3.3.0] — 2026-04-30
+
+Release minor que introduce la integración de **Marmoset Viewer** como complemento técnico de los modelos del estudiante. El docente (admin/teacher) puede asociar a cualquier modelo `.glb` su versión Marmoset Toolbag (`.mview`) — un visor de calidad técnica con materiales PBR avanzados curados manualmente. La galería muestra ambos archivos en un carrusel flip 3D donde el visitante alterna entre la vista del estudiante (XR Ready · glTF · PBR) y la vista Showcase (Marmoset · PBR).
+
+### Agregado (feature v3.3.0 — Marmoset Showcase)
+
+- **Migración 004** — Columnas `mview_url` y `mview_thumbnail_url` (nullable) en tabla `models`. Permite que un modelo del estudiante tenga una versión Showcase opcional en formato Marmoset Toolbag (.mview), curada por un docente. Bloque DO valida que los modelos existentes arranquen sin Showcase.
+- **Backend — endpoints Showcase** — Nuevo `POST /api/models/:id/showcase` (auth + RBAC admin/teacher) que sube el .mview a DO Spaces, sube poster .png/.jpg manual, y actualiza la fila del modelo. Nuevo `DELETE /api/models/:id/showcase` que limpia las columnas (soft delete del Showcase, no borra el .glb del estudiante). Multer ahora acepta campo `mview` adicional al `file`/`thumbnail` existentes.
+- **Backend — multer fileFilter + RBAC** — Validación de extensión (.glb/.gltf/.mview) en multer, y gate `requireRole(admin/teacher)` cuando se sube .mview en POST /api/models. Estudiantes solo pueden subir .glb/.gltf como antes.
+- **Frontend — `MarmosetViewer.tsx`** — Componente que monta el visor oficial de Marmoset Toolbag (script `public/marmoset.js` v4.05) en un iframe aislado. Soporta modo fluido (sin width/height → `fullFrame: true` para containers responsive como modales) y modo fijo (con width/height para previews preestablecidos).
+- **Frontend — `ShowcaseCarousel.tsx`** — Carrusel flip-card 3D que alterna entre la vista Marmoset (frontal, default) y la vista GLB del estudiante (trasera) con animación CSS `rotateY` 600ms. Toggle inferior con dos chips polaroid sincronizados.
+- **Frontend — `ModelModal` con switch** — Si el modelo tiene `mview_url`, monta el carrusel; si no, comportamiento original con Canvas único. Lazy-loaded para no inflar el bundle de modelos sin Showcase. Placeholder de carga usa `mview_thumbnail_url` cuando hay Showcase.
+- **Plan de implementación** — `docs/plans/2026-04-29-marmoset-viewer.md` con sprints, equipo (Sebastián, Isabella, Diego, Andrés, Mateo), decisiones tomadas con Carlos y restricciones de prototipado local.
+
+### Técnico
+
+- **Sandbox local** — `public/test-models/` agregado a `.gitignore` para aislar archivos `.mview` de prototipado del bucket de prod. Subida real a Spaces queda diferida hasta Sprint 7.
+- **Ruta `/test-marmoset`** (PROTOTIPO LOCAL) — Página standalone que renderiza `MarmosetViewer` apuntando a `/test-models/Bourgelon.mview`. Marcada para eliminar antes del Sprint 7 (deploy).
+
+### Sprint 6 — Identificación visual + Storage local
+
+- **Tag "Marmoset Viewer"** — Reemplaza el badge sobre thumbnail (que entraba en conflicto con los botones admin) por un tag dentro de `card-tags` con cian iluminado y pulse sutil. Aparece solo cuando el modelo tiene `mview_url` (misma fuente de verdad que activa el carrusel). Visualmente coherente con tags existentes (GLB, BLENDER, PBR, etc.). Texto literal "Marmoset Viewer" como uso descriptivo del formato (no usa logo trademark — investigado con Marmoset legal/EULA).
+- **Storage abstraction NODE_ENV-based** — Helper `putAsset(key, body, ct)` en backend que decide el destino: en producción sube al bucket DigitalOcean Spaces (S3-compatible), en desarrollo local guarda en `backend/uploads/`. Mismo formato de `file_url` (`/cdn/...`) en ambos entornos.
+- **Middleware `/cdn` con fallback** — En dev, sirve archivos desde filesystem si existen, y si no caen a proxy contra `https://ceopacademia.org/cdn/*`. Permite ver los `.glb` ya subidos en producción sin necesidad de replicar el bucket localmente.
+- **`backend/uploads/` en .gitignore** — Garantiza que el storage local nunca se commitea.
+- **Auto-extracción de thumbnail del `.mview`** — Marmoset Toolbag al exportar viewer embebe automáticamente un poster JPG como primer asset. Función `extractMviewThumbnail()` busca magic numbers JPEG (FF D8 FF / FF D9) en los primeros 256 bytes del archivo y lo extrae como `image/jpeg`. Cero dependencias, 6 líneas. Ahora el docente puede subir solo el `.mview` y el sistema saca el poster solo. Si el docente sube imagen manual, esa hace override.
+- **Sync prod → local de profiles + models + user_roles** — `pg_dump --data-only` desde prod (read-only sobre prod), aplicación a `galeria_3d_local`. Estrategia: passwords locales se preservan (Carlos admin + QA), nuevos profiles de prod reciben placeholder bcrypt no-funcional para que nadie pueda login con ellos en local. `vite.config.ts` proxies correctamente diferenciados (`/api` y `/cdn` ambos a localhost en dev).
+
+### Sprint 7 — Toolbar admin en modal del modelo
+
+- **Reemplazar `.glb`** desde el modal — endpoint `PUT /api/models/:id/file` (admin/teacher). Mantiene `id`, likes, comentarios y Showcase. Solo cambia `file_url`/`file_name`/`file_size`. UI: botón `↻` en grupo `.GLB` de la toolbar.
+- **Reemplazar `.mview`** desde el modal — botón `↻` (o `+` si aún no hay) en grupo `.MVIEW` reusa `POST /api/models/:id/showcase` con auto-extract de thumbnail.
+- **Quitar `.mview`** desde el modal — botón `✕` en grupo `.MVIEW`, confirm dialog, llama `DELETE /api/models/:id/showcase`. Soft delete: limpia las columnas `mview_url`/`mview_thumbnail_url` sin tocar el `.glb` del estudiante.
+- **Borrar el `.glb` solo NO está soportado intencionalmente** (decisión: requeriría migración para hacer `file_url` nullable + casos edge en frontend para modelos sin `.glb`. El botón rojo de "eliminar modelo completo" en la card de la galería cubre el caso real).
+- **Carousel: orden + default ajustados** — Chips reordenados: `XR Ready · glTF · PBR` primero (default activo), `Showcase · Marmoset · PBR` después. La cara default del flip 3D ahora es la del estudiante; el Showcase se elige conscientemente.
+- **`PROTOTYPE_GUARD = false`** — El guard del form ya no es necesario porque el filesystem local aísla del bucket prod.
+
+### Sprint 5 — Subida UI
+
+- **Botón "+ Showcase" en cada card** — Visible solo para admin/teacher (RBAC multi-rol vía `isAdmin`/`isTeacher` helpers). Estados visuales: cian si el modelo aún no tiene Showcase, verde si ya lo tiene. Ícono "M" estilizada de Marmoset.
+- **`ShowcaseUploadForm.tsx`** — Modal con dropzone para `.mview` y picker de imagen de portada **opcional** (Marmoset Toolbag puede embebir poster). Preview de la imagen seleccionada. Banner de modo prototipo visible mientras `PROTOTYPE_GUARD = true`.
+- **`uploadShowcase()` y `removeShowcase()`** en `lib/api.ts` — wrappers del endpoint `POST/DELETE /api/models/:id/showcase`. Thumbnail opcional en signature.
+- **PROTOTYPE_GUARD** — Flag que desactiva el upload real durante prototipado. Submit valida formularios y muestra alert con resumen, sin tocar el bucket de prod. Se desactiva en Sprint 7.
+- **Backend `POST /api/models/:id/showcase`** — Thumbnail opcional (era required); si no se envía, `mview_thumbnail_url` queda NULL y el frontend cae al thumbnail del .glb / placeholder.
+
 ## [3.2.1] — 2026-04-15
 
 Patch UX que elimina fricción en el formulario de subida de modelos.

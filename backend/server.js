@@ -2,6 +2,8 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -9,11 +11,114 @@ const multer = require("multer");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { Resend } = require("resend");
 
+// =====================================================================
+// Storage abstraction (v3.3.0 — feature Marmoset Showcase).
+// En PROD subimos a DigitalOcean Spaces (S3-compatible).
+// En DEV local guardamos en filesystem (`backend/uploads/`) y servimos
+// vía middleware `/cdn` con fallback proxy a prod para los archivos
+// que ya están en el bucket de prod (.glb/.thumb originales de estudiantes).
+// Esto garantiza que el bucket de prod NUNCA reciba uploads desde local.
+// =====================================================================
+const IS_DEV = process.env.NODE_ENV !== "production";
+const LOCAL_UPLOADS_DIR = path.join(__dirname, "uploads");
+
+if (IS_DEV) {
+  fs.mkdirSync(LOCAL_UPLOADS_DIR, { recursive: true });
+  console.log(`[storage] DEV mode — uploads → ${LOCAL_UPLOADS_DIR}`);
+}
+
+/**
+ * Extrae el thumbnail JPG embebido en un archivo .mview.
+ *
+ * Marmoset Toolbag al exportar viewer guarda automáticamente un poster
+ * JPG como primer asset del container. El formato .mview es propietario
+ * binario simple; el primer JPG está siempre en los primeros 256 bytes
+ * después del header (filename + mimetype + size).
+ *
+ * Estrategia robusta: buscar magic numbers JPEG en lugar de parsear el
+ * header — funciona aunque Marmoset cambie el formato del header en
+ * versiones futuras, mientras siga embebiendo un JPG inicial.
+ *
+ * @param {Buffer} buffer  Buffer completo del archivo .mview
+ * @returns {Buffer|null}  Buffer del JPG extraído, o null si no se encontró
+ */
+function extractMviewThumbnail(buffer) {
+  const JPG_START = Buffer.from([0xFF, 0xD8, 0xFF]);
+  const JPG_END = Buffer.from([0xFF, 0xD9]);
+  const start = buffer.indexOf(JPG_START);
+  if (start < 0 || start > 256) return null;
+  const end = buffer.indexOf(JPG_END, start);
+  if (end < 0) return null;
+  return buffer.slice(start, end + 2);
+}
+
+/**
+ * Sube un asset al storage configurado (Spaces en prod, filesystem en dev).
+ * En dev además garantiza que el directorio padre exista.
+ */
+async function putAsset(key, body, contentType) {
+  if (IS_DEV) {
+    const filepath = path.join(LOCAL_UPLOADS_DIR, key);
+    await fs.promises.mkdir(path.dirname(filepath), { recursive: true });
+    await fs.promises.writeFile(filepath, body);
+    return;
+  }
+  await s3.send(new PutObjectCommand({
+    Bucket: process.env.SPACES_BUCKET,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+    ACL: "public-read",
+  }));
+}
+
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// =====================================================================
+// DEV-ONLY: middleware `/cdn` con fallback proxy a Spaces de prod.
+// Archivos subidos LOCALMENTE viven en `backend/uploads/` y se sirven
+// directos. Si la request es por un archivo que NO existe local
+// (ej. .glb originales de estudiantes que ya están en bucket prod),
+// hacemos proxy a https://ceopacademia.org/cdn/* para que la galería
+// se vea completa en local sin replicar todo el bucket.
+//
+// En prod este middleware no se monta — nginx sirve `/cdn` directamente
+// desde el bucket de DigitalOcean Spaces (config en sites-available/galeria).
+// =====================================================================
+if (IS_DEV) {
+  app.use("/cdn", async (req, res) => {
+    const safePath = path.normalize(req.path).replace(/^[/\\]+/, "");
+    if (safePath.includes("..")) return res.status(400).end();
+    const localPath = path.join(LOCAL_UPLOADS_DIR, safePath);
+
+    // 1) Servir desde filesystem si existe localmente
+    try {
+      await fs.promises.access(localPath, fs.constants.R_OK);
+      return res.sendFile(localPath);
+    } catch { /* no existe local — caer al fallback */ }
+
+    // 2) Fallback: proxy a CDN de prod
+    try {
+      const upstreamUrl = `https://ceopacademia.org/cdn/${safePath}`;
+      const upstream = await fetch(upstreamUrl);
+      if (!upstream.ok) return res.status(upstream.status).end();
+      const ct = upstream.headers.get("content-type");
+      if (ct) res.setHeader("Content-Type", ct);
+      const cl = upstream.headers.get("content-length");
+      if (cl) res.setHeader("Content-Length", cl);
+      const buffer = Buffer.from(await upstream.arrayBuffer());
+      return res.send(buffer);
+    } catch (err) {
+      console.error("[cdn fallback]", err.message);
+      return res.status(502).end();
+    }
+  });
+  console.log("[storage] DEV /cdn middleware activo (filesystem + fallback prod)");
+}
 
 // --- Database ---
 const pool = new Pool({
@@ -35,7 +140,31 @@ const s3 = new S3Client({
   forcePathStyle: false,
 });
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+// File filter — formatos aceptados según el campo del FormData.
+//   field "file":      modelos 3D del flujo principal (.glb, .gltf, .mview)
+//   field "mview":     archivo .mview del flujo Showcase (enrichment v3.3.0)
+//   field "thumbnail": imágenes (cualquier image/*)
+// Tamaño máximo: 100 MB (cubre .mview con texturas embedded HD).
+const ALLOWED_MODEL_EXT = /\.(glb|gltf|mview)$/i;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.fieldname === "file") {
+      if (ALLOWED_MODEL_EXT.test(file.originalname)) return cb(null, true);
+      return cb(new Error("Formato no soportado. Usa .glb, .gltf o .mview"));
+    }
+    if (file.fieldname === "mview") {
+      if (/\.mview$/i.test(file.originalname)) return cb(null, true);
+      return cb(new Error("El archivo Showcase debe ser .mview"));
+    }
+    if (file.fieldname === "thumbnail") {
+      if (file.mimetype.startsWith("image/")) return cb(null, true);
+      return cb(new Error("La portada debe ser una imagen"));
+    }
+    return cb(new Error(`Campo desconocido: ${file.fieldname}`));
+  },
+});
 
 // ============================================================
 // --- RBAC Helpers ---
@@ -452,31 +581,42 @@ app.post("/api/models", auth, upload.fields([{ name: "file", maxCount: 1 }, { na
     const file = req.files?.file?.[0];
     if (!file) return res.status(400).json({ error: "Archivo requerido" });
 
+    // RBAC para .mview: solo docentes (admin / teacher) pueden subir Showcase.
+    // Los .glb/.gltf siguen abiertos a cualquier usuario autenticado (estudiantes incluidos).
+    const isMview = /\.mview$/i.test(file.originalname);
+    if (isMview && !hasAnyRole(req, "admin", "teacher")) {
+      return res.status(403).json({ error: "Solo docentes pueden subir modelos .mview (Showcase)" });
+    }
+
     const timestamp = Date.now();
     const fileKey = `models/${timestamp}-${file.originalname}`;
 
-    await s3.send(new PutObjectCommand({
-      Bucket: process.env.SPACES_BUCKET,
-      Key: fileKey,
-      Body: file.buffer,
-      ContentType: file.mimetype,
-      ACL: "public-read",
-    }));
+    await putAsset(
+      fileKey,
+      file.buffer,
+      // .mview no tiene mimetype estándar — usar octet-stream binario.
+      isMview ? "application/octet-stream" : file.mimetype
+    );
 
     const file_url = `/cdn/${fileKey}`;
     let thumbnail_url = null;
 
     const thumb = req.files?.thumbnail?.[0];
     if (thumb) {
-      const thumbKey = `thumbnails/${timestamp}-thumb.webp`;
-      await s3.send(new PutObjectCommand({
-        Bucket: process.env.SPACES_BUCKET,
-        Key: thumbKey,
-        Body: thumb.buffer,
-        ContentType: "image/webp",
-        ACL: "public-read",
-      }));
+      // Para .glb el thumb se genera client-side como WebP (ThumbnailCapture).
+      // Para .mview el docente sube imagen manual (PNG/JPG) — preservar extensión.
+      const thumbExt = isMview ? (thumb.originalname.match(/\.(png|jpg|jpeg|webp)$/i)?.[0] || ".png") : ".webp";
+      const thumbKey = `thumbnails/${timestamp}-thumb${thumbExt}`;
+      await putAsset(thumbKey, thumb.buffer, isMview ? thumb.mimetype : "image/webp");
       thumbnail_url = `/cdn/${thumbKey}`;
+    } else if (isMview) {
+      // Sin thumbnail manual y es .mview → extraer el JPG embebido por Marmoset Toolbag.
+      const embedded = extractMviewThumbnail(file.buffer);
+      if (embedded) {
+        const thumbKey = `thumbnails/${timestamp}-thumb.jpg`;
+        await putAsset(thumbKey, embedded, "image/jpeg");
+        thumbnail_url = `/cdn/${thumbKey}`;
+      }
     }
 
     const { rows } = await pool.query(
@@ -488,9 +628,167 @@ app.post("/api/models", auth, upload.fields([{ name: "file", maxCount: 1 }, { na
     res.json(rows[0]);
   } catch (err) {
     console.error("Upload error:", err);
-    res.status(500).json({ error: "Error al subir modelo" });
+    // Errores del fileFilter de multer llegan acá con err.message útil
+    const msg = err?.message?.startsWith("Formato") || err?.message?.startsWith("La portada")
+      ? err.message
+      : "Error al subir modelo";
+    res.status(500).json({ error: msg });
   }
 });
+
+// ============================================================
+// --- SHOWCASE (.mview) — feature v3.3.0 ---
+// ============================================================
+// Enriquece un modelo existente con su versión Marmoset Toolbag (.mview).
+// Solo docentes (admin/teacher) pueden agregar Showcase.
+// El frontend mostrará un carrusel para alternar entre .glb (estudiante) y .mview.
+// IMPORTANTE: declarar ANTES de PUT /api/models/:id para que Express enrute correctamente.
+app.post(
+  "/api/models/:id/showcase",
+  auth,
+  requireRole("admin", "teacher"),
+  upload.fields([
+    { name: "mview", maxCount: 1 },
+    { name: "thumbnail", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const mview = req.files?.mview?.[0];
+      const thumbnail = req.files?.thumbnail?.[0];
+
+      if (!mview) return res.status(400).json({ error: "Archivo .mview requerido" });
+      // Thumbnail es OPCIONAL — Marmoset Toolbag puede incluir poster embebido
+      // en el .mview, y el frontend tiene fallback al thumbnail del .glb del estudiante.
+
+      // Verificar que el modelo existe (FK implícita)
+      const { rows: existing } = await pool.query("SELECT id, title FROM models WHERE id = $1", [id]);
+      if (existing.length === 0) return res.status(404).json({ error: "Modelo no encontrado" });
+
+      const timestamp = Date.now();
+      const mviewKey = `models/${timestamp}-${mview.originalname}`;
+
+      // Uploads paralelos: .mview siempre, thumbnail con prioridad
+      //   1) imagen manual subida por el docente (override explícito)
+      //   2) thumbnail JPG embebido en el .mview (Marmoset Toolbag lo genera al exportar)
+      //   3) null (frontend cae al fallback del .glb / placeholder "M")
+      const uploads = [putAsset(mviewKey, mview.buffer, "application/octet-stream")];
+
+      let mview_thumbnail_url = null;
+      if (thumbnail) {
+        // Prioridad 1: override manual del docente
+        const thumbExt = thumbnail.originalname.match(/\.(png|jpg|jpeg|webp)$/i)?.[0] || ".png";
+        const thumbKey = `thumbnails/${timestamp}-showcase${thumbExt}`;
+        uploads.push(putAsset(thumbKey, thumbnail.buffer, thumbnail.mimetype));
+        mview_thumbnail_url = `/cdn/${thumbKey}`;
+      } else {
+        // Prioridad 2: extraer el JPG embebido del propio .mview
+        const embedded = extractMviewThumbnail(mview.buffer);
+        if (embedded) {
+          const thumbKey = `thumbnails/${timestamp}-showcase.jpg`;
+          uploads.push(putAsset(thumbKey, embedded, "image/jpeg"));
+          mview_thumbnail_url = `/cdn/${thumbKey}`;
+        }
+      }
+
+      await Promise.all(uploads);
+
+      const mview_url = `/cdn/${mviewKey}`;
+
+      const { rows } = await pool.query(
+        `UPDATE models
+            SET mview_url = $1, mview_thumbnail_url = $2
+          WHERE id = $3
+        RETURNING *`,
+        [mview_url, mview_thumbnail_url, id]
+      );
+
+      res.json(rows[0]);
+    } catch (err) {
+      console.error("Showcase upload error:", err);
+      const msg =
+        err?.message?.startsWith("El archivo Showcase") ||
+        err?.message?.startsWith("La portada")
+          ? err.message
+          : "Error al subir Showcase";
+      res.status(500).json({ error: msg });
+    }
+  }
+);
+
+// Quitar el Showcase (no borra el .glb del estudiante, solo limpia las columnas mview_*).
+// Útil si el docente quiere reemplazar la versión Marmoset con otra subiendo de nuevo.
+// Nota: NO borramos el archivo .mview del bucket (estrategia "soft delete" — es trivial
+// limpiar archivos huérfanos con un script administrativo si se vuelve necesario).
+app.delete("/api/models/:id/showcase", auth, requireRole("admin", "teacher"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await pool.query(
+      `UPDATE models
+          SET mview_url = NULL, mview_thumbnail_url = NULL
+        WHERE id = $1
+      RETURNING *`,
+      [id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "Modelo no encontrado" });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("Showcase delete error:", err);
+    res.status(500).json({ error: "Error al quitar Showcase" });
+  }
+});
+
+// Reemplazar archivo .glb del modelo del estudiante (v3.3.0).
+// Solo admin/teacher pueden reemplazar archivos. El modelo se mantiene
+// (mismo id, mismos likes/comentarios/showcase) — solo cambia el binario.
+// IMPORTANTE: declarar ANTES de PUT /api/models/:id para que Express no
+// lo confunda con un :id literal "file".
+app.put(
+  "/api/models/:id/file",
+  auth,
+  requireRole("admin", "teacher"),
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: "Archivo requerido" });
+
+      // Verificar que el modelo existe
+      const { rows: existing } = await pool.query(
+        "SELECT id, file_url FROM models WHERE id = $1",
+        [id]
+      );
+      if (existing.length === 0) return res.status(404).json({ error: "Modelo no encontrado" });
+
+      // Detectar tipo y aplicar mismo content-type que en POST /api/models
+      const isMview = /\.mview$/i.test(file.originalname);
+      const timestamp = Date.now();
+      const fileKey = `models/${timestamp}-${file.originalname}`;
+
+      await putAsset(
+        fileKey,
+        file.buffer,
+        isMview ? "application/octet-stream" : file.mimetype
+      );
+
+      const file_url = `/cdn/${fileKey}`;
+      const { rows } = await pool.query(
+        `UPDATE models
+            SET file_url = $1, file_name = $2, file_size = $3
+          WHERE id = $4
+        RETURNING *`,
+        [file_url, file.originalname, file.size, id]
+      );
+
+      res.json(rows[0]);
+    } catch (err) {
+      console.error("Replace file error:", err);
+      const msg = err?.message?.startsWith("Formato") ? err.message : "Error al reemplazar archivo";
+      res.status(500).json({ error: msg });
+    }
+  }
+);
 
 // Reorder — SOLO admin (orden global de la galería)
 // IMPORTANTE: declarar ANTES de PUT /api/models/:id para que Express no lo capture como :id="reorder"
@@ -761,13 +1059,7 @@ app.put("/api/models/:id/thumbnail", auth, upload.single("thumbnail"), async (re
     if (!thumb) return res.status(400).json({ error: "Thumbnail requerido" });
 
     const thumbKey = `thumbnails/${Date.now()}-${req.params.id}.webp`;
-    await s3.send(new PutObjectCommand({
-      Bucket: process.env.SPACES_BUCKET,
-      Key: thumbKey,
-      Body: thumb.buffer,
-      ContentType: "image/webp",
-      ACL: "public-read",
-    }));
+    await putAsset(thumbKey, thumb.buffer, "image/webp");
 
     const thumbnail_url = `/cdn/${thumbKey}`;
     await pool.query("UPDATE models SET thumbnail_url=$1 WHERE id=$2", [thumbnail_url, req.params.id]);

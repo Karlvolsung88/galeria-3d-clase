@@ -91,6 +91,11 @@ export interface ModelRow {
   updated_at: string;
   sort_order?: number;
   thumbnail_url?: string | null;
+  // Showcase v3.3.0 — versión Marmoset Toolbag opcional. Si hay mview_url,
+  // el modelo tiene una vista alternativa (PBR avanzado) y el modal muestra
+  // un carrusel para alternar entre .glb (estudiante) y .mview (docente).
+  mview_url?: string | null;
+  mview_thumbnail_url?: string | null;
 }
 
 export interface CommentRow {
@@ -272,6 +277,45 @@ export async function updateModel(id: string, data: Partial<ModelRow>): Promise<
 
 export async function deleteModel(id: string): Promise<void> {
   await apiFetch<{ ok: boolean }>(`/models/${id}`, { method: 'DELETE' });
+}
+
+/**
+ * Reemplaza el archivo .glb/.gltf/.mview de un modelo existente.
+ * Solo admin/teacher (RBAC en backend). El modelo conserva id, metadata,
+ * likes, comentarios y Showcase si lo tiene — solo cambia el binario.
+ */
+export async function replaceModelFile(modelId: string, file: File): Promise<ModelRow> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiFetch<ModelRow>(`/models/${modelId}/file`, {
+    method: 'PUT',
+    body: formData,
+  });
+}
+
+// =====================================================================
+// Showcase v3.3.0 — enriquece un modelo del estudiante con su versión
+// Marmoset Toolbag (.mview). Solo admin/teacher; el backend valida RBAC.
+// =====================================================================
+
+export async function uploadShowcase(
+  modelId: string,
+  mviewFile: File,
+  thumbnailFile?: File
+): Promise<ModelRow> {
+  const formData = new FormData();
+  formData.append('mview', mviewFile);
+  // Thumbnail es OPCIONAL — Marmoset Toolbag puede embebir un poster en el
+  // propio .mview, o el frontend cae al thumbnail del .glb del estudiante.
+  if (thumbnailFile) formData.append('thumbnail', thumbnailFile);
+  return apiFetch<ModelRow>(`/models/${modelId}/showcase`, {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+export async function removeShowcase(modelId: string): Promise<ModelRow> {
+  return apiFetch<ModelRow>(`/models/${modelId}/showcase`, { method: 'DELETE' });
 }
 
 export async function updateModelOrder(updates: { id: string; sort_order: number }[]): Promise<boolean> {

@@ -1,8 +1,15 @@
-import { useEffect, useCallback, useState, lazy, Suspense } from 'react';
-import { fetchComments, addComment, deleteComment, type CommentRow } from '../lib/api';
+import { useEffect, useCallback, useState, useRef, lazy, Suspense } from 'react';
+import {
+  fetchComments, addComment, deleteComment,
+  replaceModelFile, uploadShowcase, removeShowcase,
+  type CommentRow,
+} from '../lib/api';
 
 const LazyCanvas = lazy(() => import('@react-three/fiber').then(m => ({ default: m.Canvas })));
 const ModelScene = lazy(() => import('./ModelScene'));
+// Carrusel solo se carga cuando el modelo TIENE Showcase (.mview) — evita
+// inflar el bundle de modelos que solo tienen .glb.
+const ShowcaseCarousel = lazy(() => import('./ShowcaseCarousel'));
 
 interface ModelModalProps {
   modelId: string;
@@ -13,13 +20,21 @@ interface ModelModalProps {
   tags: string[];
   modelUrl: string;
   thumbnailUrl?: string | null;
+  /** URL de la versión Showcase (.mview) si el modelo la tiene. v3.3.0 */
+  mviewUrl?: string | null;
+  /** Poster manual del Showcase subido por el docente. v3.3.0 */
+  mviewThumbnailUrl?: string | null;
   userId: string | null;
   isAdmin: boolean;
+  /** Si admin/teacher — habilita la toolbar de gestión de archivos en el modal. v3.3.0 */
+  canManageFiles?: boolean;
   likeCount: number;
   isLiked: boolean;
   onLike: () => void;
   onRequestAuth: () => void;
   onClose: () => void;
+  /** Callback para refrescar la galería tras cambios en archivos del modelo. v3.3.0 */
+  onModelChanged?: () => void;
 }
 
 const categoryColors: Record<string, string> = {
@@ -50,8 +65,76 @@ function timeAgo(dateStr: string): string {
 
 export default function ModelModal({
   modelId, title, student, category, description, tags, modelUrl, thumbnailUrl,
-  userId, isAdmin, likeCount, isLiked, onLike, onRequestAuth, onClose,
+  mviewUrl, mviewThumbnailUrl,
+  userId, isAdmin, canManageFiles = false,
+  likeCount, isLiked, onLike, onRequestAuth, onClose, onModelChanged,
 }: ModelModalProps) {
+  const hasShowcase = !!mviewUrl;
+  // v3.3.0 — gestión de archivos (admin/teacher)
+  const [busyAction, setBusyAction] = useState<'replace-glb' | 'replace-mview' | 'remove-mview' | null>(null);
+  const [actionError, setActionError] = useState<string>('');
+  const replaceGlbInputRef = useRef<HTMLInputElement>(null);
+  const replaceMviewInputRef = useRef<HTMLInputElement>(null);
+
+  const handleReplaceGlb = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite re-elegir el mismo archivo
+    if (!file) return;
+    if (!/\.(glb|gltf)$/i.test(file.name)) {
+      setActionError('Solo se aceptan .glb o .gltf');
+      return;
+    }
+    setBusyAction('replace-glb');
+    setActionError('');
+    try {
+      await replaceModelFile(modelId, file);
+      onModelChanged?.();
+      onClose(); // forzar reload del modal con la nueva URL
+    } catch (err: any) {
+      setActionError(err.message || 'Error al reemplazar archivo');
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleReplaceMview = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!/\.mview$/i.test(file.name)) {
+      setActionError('Solo se aceptan archivos .mview');
+      return;
+    }
+    setBusyAction('replace-mview');
+    setActionError('');
+    try {
+      await uploadShowcase(modelId, file);
+      onModelChanged?.();
+      onClose();
+    } catch (err: any) {
+      setActionError(err.message || 'Error al reemplazar Showcase');
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleRemoveMview = async () => {
+    if (!confirm(
+      `¿Quitar el Showcase Marmoset de "${title}"?\n\n` +
+      `El modelo .glb del estudiante NO se borra — solo se quita la versión Marmoset.`
+    )) return;
+    setBusyAction('remove-mview');
+    setActionError('');
+    try {
+      await removeShowcase(modelId);
+      onModelChanged?.();
+      onClose();
+    } catch (err: any) {
+      setActionError(err.message || 'Error al quitar Showcase');
+    } finally {
+      setBusyAction(null);
+    }
+  };
   const [comments, setComments] = useState<CommentRow[]>([]);
   const [newComment, setNewComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -114,10 +197,71 @@ export default function ModelModal({
         <div className="modal-viewer-wrap">
           <button className="modal-close" onClick={onClose} aria-label="Cerrar modal">✕</button>
 
-          {/* Thumbnail placeholder (estilo Sketchfab) */}
-          {thumbnailUrl && (
+          {/* v3.3.0 — Toolbar admin top-left: gestión de archivos del modelo.
+              Visible solo para admin/teacher. Inputs file ocultos disparan los reemplazos. */}
+          {canManageFiles && (
+            <div className="modal-admin-toolbar" role="toolbar" aria-label="Gestión de archivos">
+              <input
+                ref={replaceGlbInputRef}
+                type="file"
+                accept=".glb,.gltf"
+                onChange={handleReplaceGlb}
+                style={{ display: 'none' }}
+              />
+              <input
+                ref={replaceMviewInputRef}
+                type="file"
+                accept=".mview"
+                onChange={handleReplaceMview}
+                style={{ display: 'none' }}
+              />
+
+              {/* Grupo .glb (modelo del estudiante) */}
+              <div className="admin-toolbar-group">
+                <span className="admin-toolbar-label" title="Modelo del estudiante (.glb / .gltf)">.GLB</span>
+                <button
+                  className="admin-toolbar-btn"
+                  onClick={() => replaceGlbInputRef.current?.click()}
+                  disabled={busyAction !== null}
+                  title="Reemplazar archivo del modelo"
+                >
+                  {busyAction === 'replace-glb' ? '…' : '↻'}
+                </button>
+              </div>
+
+              {/* Grupo .mview (Showcase Marmoset) */}
+              <div className="admin-toolbar-group">
+                <span className="admin-toolbar-label" title="Showcase Marmoset (.mview)">.MVIEW</span>
+                <button
+                  className="admin-toolbar-btn"
+                  onClick={() => replaceMviewInputRef.current?.click()}
+                  disabled={busyAction !== null}
+                  title={hasShowcase ? "Reemplazar Showcase" : "Agregar Showcase"}
+                >
+                  {busyAction === 'replace-mview' ? '…' : (hasShowcase ? '↻' : '+')}
+                </button>
+                {hasShowcase && (
+                  <button
+                    className="admin-toolbar-btn admin-toolbar-btn--danger"
+                    onClick={handleRemoveMview}
+                    disabled={busyAction !== null}
+                    title="Quitar Showcase"
+                  >
+                    {busyAction === 'remove-mview' ? '…' : '✕'}
+                  </button>
+                )}
+              </div>
+
+              {actionError && <span className="admin-toolbar-error">{actionError}</span>}
+            </div>
+          )}
+
+          {/* Thumbnail placeholder (estilo Sketchfab).
+              El default del carrusel ahora es .glb, así que mostramos el
+              thumbnail del .glb si existe, fallback al del .mview. */}
+          {(thumbnailUrl || mviewThumbnailUrl) && (
             <div className={`modal-thumb-placeholder ${modelLoaded ? 'hidden' : ''}`}>
-              <img src={thumbnailUrl} alt={title} />
+              <img src={thumbnailUrl || mviewThumbnailUrl!} alt={title} />
               <div className="modal-loading-spinner">
                 <div className="spinner" />
                 <span>Cargando modelo 3D...</span>
@@ -125,28 +269,46 @@ export default function ModelModal({
             </div>
           )}
 
-          {/* Canvas 3D con fade-in */}
-          <div className={`modal-canvas-wrap ${modelLoaded ? 'loaded' : ''}`}>
-            <Suspense fallback={null}>
-              <LazyCanvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true }}>
-                <ModelScene
-                  url={modelUrl}
-                  autoRotate={false}
-                  enableZoom={true}
-                  enablePan={true}
-                  enableRotate={true}
-                  showFloor={true}
-                  onLoaded={() => setModelLoaded(true)}
+          {hasShowcase ? (
+            /* v3.3.0 — Modelo tiene Showcase: carrusel flip 3D entre Marmoset y GLB */
+            <div className={`modal-canvas-wrap ${modelLoaded ? 'loaded' : ''}`}>
+              <Suspense fallback={null}>
+                <ShowcaseCarousel
+                  glbUrl={modelUrl}
+                  mviewUrl={mviewUrl!}
+                  glbThumbnail={thumbnailUrl}
+                  mviewThumbnail={mviewThumbnailUrl}
+                  onGlbLoaded={() => setModelLoaded(true)}
                 />
-              </LazyCanvas>
-            </Suspense>
-          </div>
+              </Suspense>
+            </div>
+          ) : (
+            /* Flujo original: solo .glb del estudiante */
+            <div className={`modal-canvas-wrap ${modelLoaded ? 'loaded' : ''}`}>
+              <Suspense fallback={null}>
+                <LazyCanvas camera={{ position: [3, 2, 3], fov: 40 }} gl={{ antialias: true }}>
+                  <ModelScene
+                    url={modelUrl}
+                    autoRotate={false}
+                    enableZoom={true}
+                    enablePan={true}
+                    enableRotate={true}
+                    showFloor={true}
+                    onLoaded={() => setModelLoaded(true)}
+                  />
+                </LazyCanvas>
+              </Suspense>
+            </div>
+          )}
 
-          <div className="controls-hint">
-            <span>LMB: Orbitar</span>
-            <span>RMB: Paneo</span>
-            <span>Scroll: Zoom</span>
-          </div>
+          {/* Hints solo aplican al canvas .glb — el viewer Marmoset trae sus propios controles */}
+          {!hasShowcase && (
+            <div className="controls-hint">
+              <span>LMB: Orbitar</span>
+              <span>RMB: Paneo</span>
+              <span>Scroll: Zoom</span>
+            </div>
+          )}
         </div>
 
         <div className="modal-panel">

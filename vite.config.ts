@@ -24,11 +24,13 @@ export default defineConfig({
         secure: API_SECURE,
       },
       '/cdn': {
-        // El CDN (DigitalOcean Spaces) sí sigue contra prod — los modelos .glb
-        // y thumbnails están en el mismo bucket dev/prod.
-        target: 'https://ceopacademia.org',
+        // En DEV el backend local sirve `/cdn` con fallback a prod —
+        // archivos subidos localmente viven en `backend/uploads/` y los .glb
+        // originales del bucket prod siguen accesibles via fallback proxy.
+        // Esto garantiza que el bucket de prod NO reciba uploads desde local.
+        target: API_TARGET,
         changeOrigin: true,
-        secure: true,
+        secure: API_SECURE,
       },
     },
   },
