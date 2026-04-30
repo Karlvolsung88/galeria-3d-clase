@@ -7,7 +7,11 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
-### Agregado (en progreso — feature v3.3.0 Marmoset Showcase)
+## [3.3.0] — 2026-04-30
+
+Release minor que introduce la integración de **Marmoset Viewer** como complemento técnico de los modelos del estudiante. El docente (admin/teacher) puede asociar a cualquier modelo `.glb` su versión Marmoset Toolbag (`.mview`) — un visor de calidad técnica con materiales PBR avanzados curados manualmente. La galería muestra ambos archivos en un carrusel flip 3D donde el visitante alterna entre la vista del estudiante (XR Ready · glTF · PBR) y la vista Showcase (Marmoset · PBR).
+
+### Agregado (feature v3.3.0 — Marmoset Showcase)
 
 - **Migración 004** — Columnas `mview_url` y `mview_thumbnail_url` (nullable) en tabla `models`. Permite que un modelo del estudiante tenga una versión Showcase opcional en formato Marmoset Toolbag (.mview), curada por un docente. Bloque DO valida que los modelos existentes arranquen sin Showcase.
 - **Backend — endpoints Showcase** — Nuevo `POST /api/models/:id/showcase` (auth + RBAC admin/teacher) que sube el .mview a DO Spaces, sube poster .png/.jpg manual, y actualiza la fila del modelo. Nuevo `DELETE /api/models/:id/showcase` que limpia las columnas (soft delete del Showcase, no borra el .glb del estudiante). Multer ahora acepta campo `mview` adicional al `file`/`thumbnail` existentes.
